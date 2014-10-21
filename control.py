@@ -22,7 +22,7 @@ class Control(wx.Frame):
         self.default_numexp = 1
         self.min_nbias = 3
         self.min_nflat = 3
-        self.max_nfocus = 100
+        self.max_ncontinuous = 100
         self.flat_offset = (10.0, 10.0)
         self.InitUI()
         self.InitSAMP()
@@ -50,7 +50,7 @@ class Control(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.InitMenuBar()
         self.InitPanel()
-        self.SetSize((600, 400))
+        self.SetSize((600, 600))
         self.SetTitle('Control')
         self.Centre()
         self.Show(True)
@@ -122,12 +122,12 @@ class Control(wx.Frame):
 
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
         
-        FocusButton = wx.Button(panel, label='Continuous focus')
-        FocusButton.Bind(wx.EVT_BUTTON, self.TakeFocus, FocusButton)
-        self.WorkButtons.append(FocusButton)
-        FocusButton.SetToolTip(wx.ToolTip(
+        ContinuousButton = wx.Button(panel, label='Continuous images')
+        ContinuousButton.Bind(wx.EVT_BUTTON, self.TakeContinuous, ContinuousButton)
+        self.WorkButtons.append(ContinuousButton)
+        ContinuousButton.SetToolTip(wx.ToolTip(
             'Take continuous images of specified exposure time'))
-        box.Add(FocusButton, flag=wx.EXPAND|wx.ALL, border=10)
+        box.Add(ContinuousButton, flag=wx.EXPAND|wx.ALL, border=10)
 
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
 
@@ -319,24 +319,40 @@ class Control(wx.Frame):
                 self.Log('Science images done')
             self.StopWorking()
 
-    def TakeFocus(self, e):
+    def TakeContinuous(self, e):
         exptime = self.GetExpTime()
-        elif self.StartWorking():
-            self.Log('### Taking continuous focus images...'.format(nexp))
+        if self.StartWorking():
+            self.Log('### Taking continuous images...')
             try:
                 self.Log('Using exptime of {} sec'.format(exptime))
-                for i in range(self.max_nfocus):
+                for i in range(self.max_ncontinuous):
                     self.CheckForAbort()
                     self.TakeImage(exptime)
                     # Should not save all these images
-                    self.CheckForAbort()
             except ControlAbortError:
                 self.need_abort = False
-                self.Log('Focus done')
+                self.Log('Continuous done')
             except Exception as detail:
-                self.Log('Focus images error:\n{}'.format(detail))
+                self.Log('Continuous images error:\n{}'.format(detail))
             else:
-                self.Log('Focus timed out')
+                self.Log('Continuous timed out')
+            self.StopWorking()
+
+    def TakeAcquisition(self, e):
+        exptime = self.GetExpTime()
+        if self.StartWorking():
+            self.Log('### Taking single acquisition image...')
+            try:
+                self.Log('Using exptime of {} sec'.format(exptime))
+                self.CheckForAbort()
+                self.TakeImage(exptime)
+            except ControlAbortError:
+                self.need_abort = False
+                self.Log('Acquisition image aborted')
+            except Exception as detail:
+                self.Log('Acquisition image error:\n{}'.format(detail))
+            else:
+                self.Log('Acquisition image done')
             self.StopWorking()
 
     def GetExpTime(self):
