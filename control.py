@@ -3,7 +3,7 @@
 
 # control.py
 
-mode = None
+mode = 'live'
 
 import wx
 from datetime import datetime, timedelta
@@ -31,19 +31,20 @@ class Control(wx.Frame):
         self.min_nflat = 3
         self.max_ncontinuous = 100
         self.flat_offset = (10.0, 10.0)
+        self.readout_time = 3.0
         self.InitUI()
         self.InitSAMP()
         self.SetupDS9()
         if mode is not None:
             self.InitTelescope()
             self.InitCamera()
-        self.images_root_path = './images'
+        self.images_root_path = "C:/Users/LabUser/Pictures/Telescope/"
 
     def InitTelescope(self):
         if mode == 'sim':
             self.tel = win32com.client.Dispatch("ASCOM.Simulator.Telescope")
         elif mode == 'live':
-            self.tel = win32com.client.Dispatch("Celestron.Telescope")
+            self.tel = win32com.client.Dispatch("ASCOM.Celestron.Telescope")
         if not self.tel.Connected:
             self.tel.Connected = True
         if self.tel.Connected:
@@ -65,7 +66,7 @@ class Control(wx.Frame):
         if mode == 'sim':
             self.cam = win32com.client.Dispatch("ASCOM.Simulator.Camera")
         elif mode == 'live':
-            self.cam = win32com.client.Dispatch("ASCOM.Camera")
+            self.cam = win32com.client.Dispatch("ASCOM.SXMain0.Camera")
         if not self.cam.Connected:
             self.cam.Connected = True
         if self.cam.Connected:
@@ -85,11 +86,14 @@ class Control(wx.Frame):
             self.Log('Connected to SAMP hub')
 
     def SetupDS9(self):
-        self.DS9Command('frame delete all')
-        self.DS9Command('tile')
-        self.DS9Command('frame new')
-        self.DS9Command('frame new rgb')
-        
+        if self.samp_client is not None:
+            self.DS9Command('frame delete all')
+            self.DS9Command('tile')
+            self.DS9Command('frame new')
+            self.DS9Command('frame new rgb')
+        else:
+            self.Log('No connection to DS9')
+
     def InitUI(self):
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.InitMenuBar()
@@ -375,6 +379,8 @@ class Control(wx.Frame):
                     self.CheckForAbort()
                     self.TakeImage(exptime)
                     # Should not save all these images
+                    # Need to to display in ds9
+                    # if reusing filename remember neeed to clobber
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Continuous done')
@@ -480,16 +486,17 @@ class Control(wx.Frame):
         return exptime
 
     def TakeImage(self, exptime):
+        self.image_time = datetime.utcnow()
         if self.cam is not None:
             self.cam.StartExposure(exptime, True)
-            time.sleep(exptime + self.readout_time)
-            while not self.cam.ImageReady():
+            time.sleep(exptime)
+            time.sleep(self.readout_time)
+            while not self.cam.ImageReady:
                 self.CheckForAbort()
                 time.sleep(1)
-            self.image = self.cam.ImageArray
+            self.image = np.array(self.cam.ImageArray)
         else:
             self.Log('NOT taking exposure of {} sec'.format(exptime))
-            self.image_time = datetime.utcnow()
             time.sleep(3)
             self.image = np.random.poisson(10000 * exptime, (100,100))
         self.SaveImage()
@@ -499,21 +506,23 @@ class Control(wx.Frame):
         self.DisplayRGBImage()
 
     def DisplayImage(self):
-        self.DS9LoadImage(self.images_path, self.filename, frame=1)
+        if self.samp_client is not None:
+            self.DS9LoadImage(self.images_path, self.filename, frame=1)
         
     def DisplayRGBImage(self):
-        self.DS9SelectFrame(2)
-        for f in ('red', 'green', 'blue'):
-            self.DS9Command('rgb {}'.format(f))
-            self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
-        self.DS9Command('rgb close')
+        if self.samp_client is not None:
+            self.DS9SelectFrame(2)
+            for f in ('red', 'green', 'blue'):
+                self.DS9Command('rgb {}'.format(f))
+                self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
+            self.DS9Command('rgb close')
 
     def SaveRGBImages(self, type='raw', name=None):
         self.SaveImage(type, name, filters=True)
 
     def SaveImage(self, type='raw', name=None, filters=False):
         if name is None:
-            name = self.image_time.strftime('%Y-%m-%d_%H:%M:%S')
+            name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         night = self.image_time - timedelta(hours=12)
         path = self.image_time.strftime('%Y-%m-%d')
         self.images_path = os.path.join(self.images_root_path, path)
@@ -526,7 +535,7 @@ class Control(wx.Frame):
             fullfilename = os.path.join(self.images_path, filename)
             pyfits.writeto(fullfilename, self.image, header)
             self.Log('Saved {}'.format(filename))
-        if filters is True:
+        else:
             self.filters_filename = {}
             for f in self.filters:
                 filename = name+'_'+f+'.fits'
@@ -554,7 +563,6 @@ class Control(wx.Frame):
         if url is not None:
             params['url'] = url
         message = {'samp.mtype': 'ds9.set', 'samp.params': params}
-        print 'DS9:', cmd, url
         self.samp_client.notify_all(message)
 
     def DS9SelectFrame(self, frame):
@@ -564,6 +572,7 @@ class Control(wx.Frame):
         if frame is not None:
             self.DS9SelectFrame(frame)
         url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
+        url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('fits', url)
         
 class ControlError(Exception):
