@@ -3,6 +3,8 @@
 
 # control.py
 
+mode = None
+
 import wx
 from datetime import datetime, timedelta
 import time
@@ -11,11 +13,16 @@ import numpy as np
 import pyfits
 import urlparse
 from astropy.vo.samp import SAMPIntegratedClient
+if mode is not None:
+    # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
+    import win32com.client
 
 class Control(wx.Frame):
 
     def __init__(self, *args, **kwargs):
         super(Control, self).__init__(*args, **kwargs)
+        self.tel = None
+        self.cam = None
         self.bias = None
         self.flat = None
         self.default_exptime = 1.0
@@ -27,8 +34,45 @@ class Control(wx.Frame):
         self.InitUI()
         self.InitSAMP()
         self.SetupDS9()
+        if mode is not None:
+            self.InitTelescope()
+            self.InitCamera()
         self.images_root_path = './images'
 
+    def InitTelescope(self):
+        if mode == 'sim':
+            self.tel = win32com.client.Dispatch("ASCOM.Simulator.Telescope")
+        elif mode == 'live':
+            self.tel = win32com.client.Dispatch("Celestron.Telescope")
+        if not self.tel.Connected:
+            self.tel.Connected = True
+        if self.tel.Connected:
+            self.Log("Connected to telescope")
+        else:
+            self.Log("Unable to connect to telescope")
+            self.tel = None
+            
+        if self.tel is not None:
+            self.Log("Telescope time is {}".format(self.tel.UTCDate))
+            if not self.tel.Tracking:
+                self.tel.Tracking = True
+            if self.tel.Tracking:
+                self.Log("Telescope tracking")
+            else:
+                self.Log("Unable to start telescope tracking")
+
+    def InitCamera(self):
+        if mode == 'sim':
+            self.cam = win32com.client.Dispatch("ASCOM.Simulator.Camera")
+        elif mode == 'live':
+            self.cam = win32com.client.Dispatch("ASCOM.Camera")
+        if not self.cam.Connected:
+            self.cam.Connected = True
+        if self.cam.Connected:
+            self.Log("Connected to camera")
+        else:
+            self.Log("Unable to connect to camera")
+        
     def InitSAMP(self):
         self.Log('Attempting to connect to SAMP hub')
         try:
@@ -240,6 +284,8 @@ class Control(wx.Frame):
             self.Log('Disconnecting from SAMP hub')
             try:
                 self.samp_client.disconnect()
+                self.tel.Connected = False
+                self.cam.Connected = False
             except:
                 pass
         self.Destroy()
@@ -283,7 +329,7 @@ class Control(wx.Frame):
                         self.Log('Starting flat {}'.format(i+1))
                         self.CheckForAbort()
                         self.TakeImage(exptime)
-                        self.OffsetScope(self.flat_offset)
+                        self.OffsetTelescope(self.flat_offset)
                         self.Log('Taken flat {}'.format(i+1))
                         self.CheckForAbort()                    
             except ControlAbortError:
@@ -389,10 +435,16 @@ class Control(wx.Frame):
         else:
             return False
 
-    def OffsetScope(self, offset_arcsec):
+    def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
-        self.Log('NOT offsetting scope {}" RA, {}" Dec'%format(dra, ddec))
-        pass
+        if self.tel is not None:
+            ra = self.tel.RightAscension + dra / (60*60*24)
+            dec = self.tel.Declination + ddec / (60*60*360)
+            self.tel.TargetRightAscension = ra
+            self.tel.TargetDeclination = dec
+            self.tel.SlewToTarget()
+        else:
+            self.Log('NOT offsetting telescope {}" RA, {}" Dec'%format(dra, ddec))
             
     def GetFlatExpTime(self, start_exptime=None,
                         min_exptime=0.001, max_exptime=60.0,
@@ -428,10 +480,18 @@ class Control(wx.Frame):
         return exptime
 
     def TakeImage(self, exptime):
-        self.Log('NOT taking exposure of {} sec'.format(exptime))
-        self.image_time = datetime.utcnow()
-        time.sleep(3)
-        self.image = np.random.poisson(10000 * exptime, (100,100))
+        if self.cam is not None:
+            self.cam.StartExposure(exptime, True)
+            time.sleep(exptime + self.readout_time)
+            while not self.cam.ImageReady():
+                self.CheckForAbort()
+                time.sleep(1)
+            self.image = self.cam.ImageArray
+        else:
+            self.Log('NOT taking exposure of {} sec'.format(exptime))
+            self.image_time = datetime.utcnow()
+            time.sleep(3)
+            self.image = np.random.poisson(10000 * exptime, (100,100))
         self.SaveImage()
         self.DisplayImage()
         self.DeBayer()
