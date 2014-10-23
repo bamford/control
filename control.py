@@ -612,7 +612,7 @@ class Control(wx.Frame):
                 for i in range(100):
                     x = np.random.choice(self.image.shape[0]-size)
                     y = np.random.choice(self.image.shape[1]-size)
-                    flux = np.random.poisson(100) * 50
+                    flux = np.random.poisson(100) * 500
                     self.image[x:x+size,y:y+size] += star * flux
                 #self.image *= np.arange(shape[0])/(2.0*shape[0]) + 0.75 
                 self.image = np.random.poisson(self.image)
