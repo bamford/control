@@ -25,6 +25,8 @@ if mode is not None:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
     import win32com.client
 
+from guider import Guider
+
 class Control(wx.Frame):
 
     def __init__(self, *args, **kwargs):
@@ -49,6 +51,9 @@ class Control(wx.Frame):
             self.InitCamera()
         self.InitPaths()
         self.LoadCalibrations()
+        self.guider = Guider(self)
+        self.guider.Hide()
+        self.guider_hidden = True
 
     def InitTelescope(self):
         if mode == 'sim':
@@ -253,6 +258,14 @@ class Control(wx.Frame):
         box.Add(self.AbortButton, flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
         
+        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+                border=10)
+        
+        self.GuiderButton = wx.Button(panel, label='Show Guider')
+        self.GuiderButton.Bind(wx.EVT_BUTTON, self.ToggleGuider)
+        self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
+        box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
+
     def InitLog(self, panel, box):
         self.logger = wx.TextCtrl(panel, size=(600,100),
                         style=wx.TE_MULTILINE | wx.TE_READONLY)
@@ -683,6 +696,16 @@ class Control(wx.Frame):
         # (local or web-based), then set
         # self.astrometry = True
         pass
+
+    def ToggleGuider(self, e):
+        if self.guider_hidden:
+            self.guider.Show()
+            self.guider_hidden = False
+            self.GuiderButton.SetLabel('Hide Guider')
+        else:
+            self.guider.Hide()
+            self.guider_hidden = True
+            self.GuiderButton.SetLabel('Show Guider')
 
     def DS9Command(self, cmd, url=None, params=None):
         if params is None:
