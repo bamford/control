@@ -178,14 +178,14 @@ class Control(wx.Frame):
         self.WorkButtons = []
 
         BiasButton = wx.Button(panel, label='Take bias images')
-        BiasButton.Bind(wx.EVT_BUTTON, self.TakeBias, BiasButton)
+        BiasButton.Bind(wx.EVT_BUTTON, self.TakeBias)
         self.WorkButtons.append(BiasButton)
         BiasButton.SetToolTip(wx.ToolTip(
             'Take a set of bias images and store a master bias'))
         box.Add(BiasButton, flag=wx.EXPAND|wx.ALL, border=10)
 
         FlatButton = wx.Button(panel, label='Take flat images')
-        FlatButton.Bind(wx.EVT_BUTTON, self.TakeFlat, FlatButton)
+        FlatButton.Bind(wx.EVT_BUTTON, self.TakeFlat)
         self.WorkButtons.append(FlatButton)
         FlatButton.SetToolTip(wx.ToolTip(
             'Take test images to determine optimum exposure time, then '
@@ -193,14 +193,14 @@ class Control(wx.Frame):
         box.Add(FlatButton, flag=wx.EXPAND|wx.ALL, border=10)
 
         AcquisitionButton = wx.Button(panel, label='Take acquisition image')
-        AcquisitionButton.Bind(wx.EVT_BUTTON, self.TakeAcquisition, AcquisitionButton)
+        AcquisitionButton.Bind(wx.EVT_BUTTON, self.TakeAcquisition)
         self.WorkButtons.append(AcquisitionButton)
         AcquisitionButton.SetToolTip(wx.ToolTip(
             'Take single image of specified exposure time'))
         box.Add(AcquisitionButton, flag=wx.EXPAND|wx.ALL, border=10)
         
         ScienceButton = wx.Button(panel, label='Take science images')
-        ScienceButton.Bind(wx.EVT_BUTTON, self.TakeScience, ScienceButton)
+        ScienceButton.Bind(wx.EVT_BUTTON, self.TakeScience)
         self.WorkButtons.append(ScienceButton)
         ScienceButton.SetToolTip(wx.ToolTip(
             'Take science images of specified exposure time and number'))
@@ -209,7 +209,7 @@ class Control(wx.Frame):
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
         
         ContinuousButton = wx.Button(panel, label='Continuous images')
-        ContinuousButton.Bind(wx.EVT_BUTTON, self.TakeContinuous, ContinuousButton)
+        ContinuousButton.Bind(wx.EVT_BUTTON, self.TakeContinuous)
         self.WorkButtons.append(ContinuousButton)
         ContinuousButton.SetToolTip(wx.ToolTip(
             'Take continuous images of specified exposure time'))
