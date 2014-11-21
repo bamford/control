@@ -30,11 +30,42 @@ from guider import Guider
 class Control(wx.Frame):
 
     def __init__(self, *args, **kwargs):
-        super(Control, self).__init__(*args, **kwargs)
-        self.tel = None
-        self.cam = None
-        self.bias = None
-        self.flat = None
+        wx.Frame.__init__(self, *args, title='Control',
+                          size=(800, 600), **kwargs)
+        self.__DoLayout()
+        self.Log = self.panel.Log
+        self.Bind(wx.EVT_CLOSE, self.OnQuit)
+        self.Show(True)
+        self.guider = Guider(self)
+        self.guider.Hide()
+
+    def __DoLayout(self):
+        self.InitMenuBar()
+        self.panel = ControlPanel(self)
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        sizer.Add(self.panel, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+
+    def InitMenuBar(self):
+        menubar = wx.MenuBar()
+        fileMenu = wx.Menu()
+        fitem = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
+        menubar.Append(fileMenu, '&File')
+        self.SetMenuBar(menubar)
+        self.Bind(wx.EVT_MENU, self.OnQuit, fitem)
+
+    def OnQuit(self, e):
+        self.panel.OnQuit(None)
+        self.guider.Destroy()
+        self.Destroy()
+
+
+class ControlPanel(wx.Panel):
+
+    def __init__(self, *args, **kwargs):
+        wx.Panel.__init__(self, *args, **kwargs)
+        self.main = args[0]
+        # configuration:
         self.default_exptime = 1.0
         self.default_numexp = 1
         self.min_nbias = 3
@@ -43,7 +74,13 @@ class Control(wx.Frame):
         self.flat_offset = (10.0, 10.0)
         self.readout_time = 3.0
         self.images_root_path = "C:/Users/LabUser/Pictures/Telescope/"
-        self.InitUI()
+        # special objects:
+        self.tel = None
+        self.cam = None
+        self.bias = None
+        self.flat = None
+        # initialisations
+        self.InitPanel()
         self.InitSAMP()
         self.InitDS9()
         if mode is not None:
@@ -51,9 +88,6 @@ class Control(wx.Frame):
             self.InitCamera()
         self.InitPaths()
         self.LoadCalibrations()
-        self.guider = Guider(self)
-        self.guider.Hide()
-        self.guider_hidden = True
 
     def InitTelescope(self):
         if mode == 'sim':
@@ -137,41 +171,23 @@ class Control(wx.Frame):
             self.flat = np.asarray(pyfits.getdata(mf))
             self.Log('Loaded masterflat: {}'.format(os.path.basename(mf)))
             
-    def InitUI(self):
-        self.Bind(wx.EVT_CLOSE, self.OnQuit)
-        self.InitMenuBar()
-        self.InitPanel()
-        self.SetSize((800, 600))
-        self.SetTitle('Control')
-        self.Centre()
-        self.Show(True)
-
-    def InitMenuBar(self):
-        menubar = wx.MenuBar()
-        fileMenu = wx.Menu()
-        fitem = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
-        menubar.Append(fileMenu, '&File')
-        self.SetMenuBar(menubar)
-        self.Bind(wx.EVT_MENU, self.OnQuit, fitem)
-
     def InitPanel(self):
-        panel = wx.Panel(self)
         MainBox = wx.BoxSizer(wx.HORIZONTAL)        
-        sb = wx.StaticBox(panel)
+        sb = wx.StaticBox(self)
         ButtonBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
-        self.InitButtons(panel, ButtonBox)
+        self.InitButtons(self, ButtonBox)
         MainBox.Add(ButtonBox, 0, flag=wx.EXPAND)
-        sb = wx.StaticBox(panel)
+        sb = wx.StaticBox(self)
         feedbackbox = wx.StaticBoxSizer(sb, wx.VERTICAL)
-        #sb = wx.StaticBox(panel, label="Image")
+        #sb = wx.StaticBox(self, label="Image")
         #ImageBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         #feedbackbox.Add(ImageBox, 2, flag=wx.EXPAND)
-        sb = wx.StaticBox(panel, label="Log")
+        sb = wx.StaticBox(self, label="Log")
         LogBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
-        self.InitLog(panel, LogBox)
+        self.InitLog(self, LogBox)
         feedbackbox.Add(LogBox, 1, flag=wx.EXPAND)
         MainBox.Add(feedbackbox, 1, flag=wx.EXPAND)
-        panel.SetSizer(MainBox)
+        self.SetSizer(MainBox)
 
     def InitButtons(self, panel, box):
         # flag to indicate if an image is being taken
@@ -292,6 +308,16 @@ class Control(wx.Frame):
         time.sleep(0.01)
         self.logger.Refresh()
 
+    def OnQuit(self, e):
+        if self.samp_client is not None:
+            self.Log('Disconnecting from SAMP hub')
+            try:
+                self.samp_client.disconnect()
+                self.tel.Connected = False
+                self.cam.Connected = False
+            except:
+                pass
+        
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
             button.Enable()
@@ -343,7 +369,6 @@ class Control(wx.Frame):
                 self.cam.Connected = False
             except:
                 pass
-        self.Destroy()
 
     def TakeBias(self, e):
         # Popup to check cover on?
@@ -698,14 +723,12 @@ class Control(wx.Frame):
         pass
 
     def ToggleGuider(self, e):
-        if self.guider_hidden:
-            self.guider.Show()
-            self.guider_hidden = False
-            self.GuiderButton.SetLabel('Hide Guider')
-        else:
-            self.guider.Hide()
-            self.guider_hidden = True
+        if self.main.guider.IsShown():
+            self.main.guider.Hide()
             self.GuiderButton.SetLabel('Show Guider')
+        else:
+            self.main.guider.Show()
+            self.GuiderButton.SetLabel('Hide Guider')
 
     def DS9Command(self, cmd, url=None, params=None):
         if params is None:
@@ -738,11 +761,10 @@ class ControlAbortError(ControlError):
         self.msg = msg
 
 
-            
 def main():
-    ex = wx.App()
+    app = wx.App(False)
     Control(None)
-    ex.MainLoop()    
+    app.MainLoop()
 
         
 if __name__ == '__main__':
