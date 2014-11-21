@@ -3,11 +3,9 @@
 
 # control.py
 
+# simulate obtaining images for testing
+simulate = True
 debug = True
-
-#mode = 'live'
-#mode = 'sim'
-mode = None
 
 import wx
 from datetime import datetime, timedelta
@@ -21,7 +19,7 @@ import urlparse
 from astropy.vo.samp import SAMPIntegratedClient
 if debug:
     import traceback
-if mode is not None:
+if not simulate:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
     import win32com.client
 
@@ -83,26 +81,24 @@ class ControlPanel(wx.Panel):
         self.InitPanel()
         self.InitSAMP()
         self.InitDS9()
-        if mode is not None:
-            self.InitTelescope()
-            self.InitCamera()
+        self.InitTelescope()
+        self.InitCamera()
         self.InitPaths()
         self.LoadCalibrations()
 
     def InitTelescope(self):
-        if mode == 'sim':
-            self.tel = win32com.client.Dispatch("ASCOM.Simulator.Telescope")
-        elif mode == 'live':
+        if not simulate:
             self.tel = win32com.client.Dispatch("ASCOM.Celestron.Telescope")
-        if not self.tel.Connected:
-            self.tel.Connected = True
-        if self.tel.Connected:
-            self.Log("Connected to telescope")
         else:
-            self.Log("Unable to connect to telescope")
             self.tel = None
-            
         if self.tel is not None:
+            if not self.tel.Connected:
+                self.tel.Connected = True
+            if self.tel.Connected:
+                self.Log("Connected to telescope")
+            else:
+                self.Log("Unable to connect to telescope")
+                self.tel = None
             self.Log("Telescope time is {}".format(self.tel.UTCDate))
             if not self.tel.Tracking:
                 self.tel.Tracking = True
@@ -112,10 +108,10 @@ class ControlPanel(wx.Panel):
                 self.Log("Unable to start telescope tracking")
 
     def InitCamera(self):
-        if mode == 'sim':
-            self.cam = win32com.client.Dispatch("ASCOM.Simulator.Camera")
-        elif mode == 'live':
+        if not simulate:
             self.cam = win32com.client.Dispatch("ASCOM.SXMain0.Camera")
+        else:
+            self.cam = None
         if not self.cam.Connected:
             self.cam.Connected = True
         if self.cam.Connected:
