@@ -121,9 +121,6 @@ class SXVAO():
     def Centre():
         self.ao.write('K')
         response = self.ao.read(1)
-        if response == 'K':
-            self.parent.Log('AO unit centred')
-        else:
-            self.parent.Log('AO unit centring failed')
+        return response == 'K'
 
     

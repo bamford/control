@@ -3,13 +3,15 @@
 
 # guider.py
 
+from __future__ import print_function
+
 # simulate obtaining images for testing
 simulate = True
 
 import numpy as np
 import scipy.stats
 import time
-from Queue import Queue
+from collections import deque
 
 import wx
 import threading
@@ -119,6 +121,7 @@ class AOThread(threading.Thread):
         self.corrections = corrections
         self.comport = comport
         self.timeout = timeout
+        self.minsteptime = 0.1  # seconds
         self.AO = None
 
     def run(self):
@@ -132,9 +135,29 @@ class AOThread(threading.Thread):
             self.Log('Failed to start AO')
         else:
             self.Log('Started AO')
+            last_step_time = 0
             while not self.stopevent.is_set():
-                dx, dy = self.corrections.get()
-                if abs(dx) > 1e-6 or abs(dy) > 1e-6:
+                # avoid sending corrections too quickly to AO unit
+                dt = time.time() - last_step_time
+                time.sleep(max(0,  self.minsteptime - dt))
+                while True:
+                    try:
+                        # get latest correction                
+                        dx, dy = self.corrections.pop()
+                        break
+                    except IndexError:
+                        # wait until we have a correction to deal with
+                        if self.stopevent.is_set():
+                            break 
+                        time.sleep(self.minsteptime)
+                if self.stopevent.is_set():
+                    break 
+                try:
+                    zero = abs(dx) > 1e-6 or abs(dy) > 1e-6
+                except TypeError:
+                    zero = True
+                if not zero:
+                    # only attempt a correction if significant
                     if not simulate:
                         ok = self.AO.MakeCorrection(dx, dy)
                     if ok:
@@ -142,9 +165,18 @@ class AOThread(threading.Thread):
                                  '({:.2f},{:.2f})'.format(dx, dy))
                     else:
                         self.Log('Failed to perform AO correction')
-                self.corrections.task_done()
+                    last_step_time = time.time()
+                elif dx == 'K':
+                    if not simulate:
+                        ok = self.AO.Centre()
+                    if ok:
+                        self.Log('Centred AO unit')
+                    else:
+                        self.Log('AO unit centring failed')
+                    last_step_time = time.time()
             self.Log('Stopped AO')
-            self.AO.Disconnect()
+            if not simulate:
+                self.AO.Disconnect()
 
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
@@ -202,6 +234,7 @@ class GuiderPanel(wx.Panel):
         self.guide_centroid = None
         self.image = None
         self.InitPanel()
+        self.InitAO()
 
     def InitPanel(self):
         MainBox = wx.BoxSizer(wx.VERTICAL)        
@@ -289,18 +322,27 @@ class GuiderPanel(wx.Panel):
     def StopCamera(self):
         self.stop_camera.set()
         self.camera_on = False
+        #self.ImageTaker.join()
 
+    def InitAO(self):
+        AOCENTRE = ('K', 'K')
+        self.StartGuiding()
+        self.AOcorrections.appendleft(AOCENTRE)
+        time.sleep(0.1)
+        self.StopGuiding()
+        
     def StartGuiding(self):
         self.guiding_on = True
         self.stop_guiding = threading.Event()
-        self.AOcorrections = Queue()
-        self.AO = AOThread(self, self.stop_camera, self.AOcorrections,
+        self.AOcorrections = deque(maxlen=1)
+        self.AO = AOThread(self, self.stop_guiding, self.AOcorrections,
                            self.comport, self.timeout)
         self.AO.start()
 
     def StopGuiding(self):
         self.stop_guiding.set()
         self.guiding_on = False
+        #self.AO.join()
         
     def UpdateImageDisplay(self):
         wd, hd = self.ImageDisplay.Size
@@ -379,7 +421,7 @@ class GuiderPanel(wx.Panel):
         dx, dy = self.CentroidBox()
         dx = dx if (abs(dx) > self.min_guide_correction) else 0.0
         dy = dy if (abs(dy) > self.min_guide_correction) else 0.0
-        self.AOcorrections.put((dx, dy))
+        self.AOcorrections.appendleft((dx, dy))
             
     def CentroidBox(self):
         xc, yc, size = self.GetRectCorner(self.guide_box_position.x,

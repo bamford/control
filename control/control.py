@@ -112,14 +112,15 @@ class ControlPanel(wx.Panel):
             self.cam = win32com.client.Dispatch("ASCOM.SXMain0.Camera")
         else:
             self.cam = None
-        if not self.cam.Connected:
-            self.cam.Connected = True
-        if self.cam.Connected:
-            self.cam.StartExposure(0, True) # discard first image
-            # wait for camera to cool?
-            self.Log("Connected to camera")
-        else:
-            self.Log("Unable to connect to camera")
+        if self.cam is not None:
+            if not self.cam.Connected:
+                self.cam.Connected = True
+            if self.cam.Connected:
+                self.cam.StartExposure(0, True) # discard first image
+                # wait for camera to cool?
+                self.Log("Connected to camera")
+            else:
+                self.Log("Unable to connect to camera")
         
     def InitSAMP(self):
         self.Log('Attempting to connect to SAMP hub')
@@ -175,13 +176,20 @@ class ControlPanel(wx.Panel):
         MainBox.Add(ButtonBox, 0, flag=wx.EXPAND)
         sb = wx.StaticBox(self)
         feedbackbox = wx.StaticBoxSizer(sb, wx.VERTICAL)
+        sb = wx.StaticBox(self)
+        InfoBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
+        self.InitInfo(self, InfoBox)
+        feedbackbox.Add(InfoBox, 1, flag=wx.EXPAND)
+        self.UpdateInfoTimer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
+        self.UpdateInfoTimer.Start(1000) # 1 second interval
         #sb = wx.StaticBox(self, label="Image")
         #ImageBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         #feedbackbox.Add(ImageBox, 2, flag=wx.EXPAND)
-        sb = wx.StaticBox(self, label="Log")
+        sb = wx.StaticBox(self)
         LogBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         self.InitLog(self, LogBox)
-        feedbackbox.Add(LogBox, 1, flag=wx.EXPAND)
+        feedbackbox.Add(LogBox, 2, flag=wx.EXPAND)
         MainBox.Add(feedbackbox, 1, flag=wx.EXPAND)
         self.SetSizer(MainBox)
 
@@ -278,6 +286,47 @@ class ControlPanel(wx.Panel):
         self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
         box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
 
+    def InitInfo(self, panel, box):
+        # Times
+        subBox = wx.BoxSizer(wx.HORIZONTAL)
+        self.pc_time = wx.StaticText(panel)
+        subBox.Add(self.pc_time)
+        subBox.Add((20, -1))
+        self.tel_time = wx.StaticText(panel)
+        subBox.Add(self.tel_time)
+        box.Add(subBox, 0)
+        box.Add((-1, 10))
+        # Positions
+        subBox = wx.BoxSizer(wx.HORIZONTAL)
+        self.tel_ra = wx.StaticText(panel)
+        subBox.Add(self.tel_ra)
+        subBox.Add((20, -1))
+        self.tel_dec = wx.StaticText(panel)
+        subBox.Add(self.tel_dec)
+        box.Add(subBox, 0)
+        self.UpdateInfo(None)
+
+    def UpdateInfo(self, event):
+        self.UpdateTime()
+        self.UpdatePosition()
+        
+    def UpdateTime(self):
+        now = datetime.utcnow()
+        timeStamp = now.strftime('%H:%M:%S UT')
+        self.pc_time.SetLabel('PC time:  {}'.format(timeStamp))
+        if self.tel is not None:
+            self.tel_time.SetLabel('Tel. time:  {}'.format(self.tel.UTCDate))
+        else:
+            self.tel_time.SetLabel('Tel. time:  not available')
+
+    def UpdatePosition(self):
+        if self.tel is not None:
+            self.tel_ra.SetLabel('Tel. RA:  {}'.format(self.tel.RightAscension))
+            self.tel_dec.SetLabel('Dec:  {}'.format(self.tel.Declination))
+        else:
+            self.tel_ra.SetLabel('Tel. RA:  not available')
+            self.tel_dec.SetLabel('Dec:  not available')
+            
     def InitLog(self, panel, box):
         self.logger = wx.TextCtrl(panel, size=(600,100),
                         style=wx.TE_MULTILINE | wx.TE_READONLY)
@@ -305,6 +354,7 @@ class ControlPanel(wx.Panel):
         self.logger.Refresh()
 
     def OnQuit(self, e):
+        self.UpdateInfoTimer.Stop()
         if self.samp_client is not None:
             self.Log('Disconnecting from SAMP hub')
             try:
