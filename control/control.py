@@ -12,12 +12,13 @@ from datetime import datetime, timedelta
 import time
 import os.path
 from glob import glob
+import StringIO
 import numpy as np
 import scipy.stats
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
-from astropy.vo.samp import SAMPIntegratedClient
+import pyds9
 import urlparse
 if debug:
     import traceback
@@ -81,7 +82,6 @@ class ControlPanel(wx.Panel):
         self.flat = None
         # initialisations
         self.InitPanel()
-        self.InitSAMP()
         self.InitDS9()
         self.InitTelescope()
         self.InitCamera()
@@ -128,27 +128,19 @@ class ControlPanel(wx.Panel):
             else:
                 self.Log("Unable to connect to camera")
         
-    def InitSAMP(self):
-        self.Log('Attempting to connect to SAMP hub')
-        try:
-            self.samp_client = SAMPIntegratedClient()
-            self.samp_client.connect()
-        except Exception as detail:
-            self.samp_client = None
-            self.Log('Connection to SAMP hub failed:\n{}'.format(detail))
-        else:
-            self.Log('Connected to SAMP hub')
-
     def InitDS9(self):
-        if self.samp_client is not None:
-            self.Log('Attempting to set up DS9')
-            self.DS9Command('frame delete all')
-            self.DS9Command('tile')
-            self.DS9Command('frame new')
-            self.DS9Command('frame new rgb')
-            self.DS9Command('rgb close')
-        else:
-            self.Log('No connection to DS9')
+        self.Log('Attempting to set up DS9')
+        try:
+            self.ds9 = pyds9.ds9('control_display')
+        except:
+            self.Log('Could not set up DS9')
+            self.ds9 = None
+        if ds9 is not None:
+            self.ds9.set('frame delete all')
+            self.ds9.set('tile')
+            self.ds9.set('frame new')
+            self.ds9.set('frame new rgb')
+            self.ds9.set('rgb close')
 
     def InitPaths(self):
         night = datetime.utcnow() - timedelta(hours=12)
@@ -365,17 +357,18 @@ class ControlPanel(wx.Panel):
 
     def OnQuit(self, e):
         self.UpdateInfoTimer.Stop()
-        if self.samp_client is not None:
-            self.Log('Disconnecting from SAMP hub')
-            try:
-                self.samp_client.disconnect()
-                self.tel.Connected = False
-                self.cam.Connected = False
-                # Only in a thread:
-                # win32com.client.pythoncom.CoUninitialize() # tel
-                # win32com.client.pythoncom.CoUninitialize() # cam
-            except:
-                pass
+        try:
+            self.tel.Connected = False
+            # Only in a thread:
+            # win32com.client.pythoncom.CoUninitialize() # tel
+        except:
+            pass
+        try:
+            self.cam.Connected = False
+            # Only in a thread:
+            # win32com.client.pythoncom.CoUninitialize() # cam
+        except:
+            pass
         
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
@@ -418,16 +411,6 @@ class ControlPanel(wx.Panel):
             return True
         else:
             return False
-        
-    def OnQuit(self, e):
-        if self.samp_client is not None:
-            self.Log('Disconnecting from SAMP hub')
-            try:
-                self.samp_client.disconnect()
-                self.tel.Connected = False
-                self.cam.Connected = False
-            except:
-                pass
 
     def TakeBias(self, e):
         # Popup to check cover on?
@@ -717,17 +700,29 @@ class ControlPanel(wx.Panel):
         self.filters = None  # do not use filters until debayered
 
     def DisplayImage(self):
-        if self.samp_client is not None:
-            self.DS9LoadImage(self.images_path, self.filename, frame=1)
+        # adapted from pyds9.set_np2arr
+        if self.ds9 is not None:
+            self.ds9.set('frame 1')
+            if not self.image.flags['C_CONTIGUOUS']:
+                self.image = np.ascontiguousarray(self.image)
+            bp = pyds9._np2bp(self.image.dtype)
+            buf = self.image.tostring('C')
+            blen = len(self.image.data)
+            (w, h) = self.image.shape
+            paramlist = 'array [xdim=%d,ydim=%d,bitpix=%d]' % (h, w, bp)
+            self.ds9.set(paramlist, buf, blen+1)
         
     def DisplayRGBImage(self):
-        if self.samp_client is not None:
-            self.DS9SelectFrame(2)
-            for f in ('red', 'green', 'blue'):
-                # Could this be all done in one SAMP command?
-                self.DS9Command('rgb {}'.format(f))
-                self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
-            self.DS9Command('rgb close')
+        if self.ds9 is not None:
+            self.ds9.set('frame 2')
+            if not self.filters.flags['C_CONTIGUOUS']:
+                self.filters = np.ascontiguousarray(self.filters)
+            bp = pyds9._np2bp(self.filters.dtype)
+            buf = self.filters.tostring('C')
+            blen = len(self.filters.data)
+            (z, w, h) = self.filters.shape
+            paramlist = 'array [xdim=%d,ydim=%d,zdim=%d,bitpix=%d]' % (h, w, z, bp)
+            self.ds9.set(paramlist, buf, blen+1)
 
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
@@ -750,11 +745,11 @@ class ControlPanel(wx.Panel):
             self.Log('Saved {}'.format(filename))
         else:
             self.filters_filename = {}
-            for f in self.filters:
+            for i, f in enumerate('rgb'):
                 filename = name+'_'+f+'.fits'
                 self.filters_filename[f] = filename
                 fullfilename = os.path.join(self.images_path, filename)
-                pyfits.writeto(fullfilename, self.filters[f], header,
+                pyfits.writeto(fullfilename, self.filters[i], header,
                                clobber=clobber)
                 self.Log('Saved {}'.format(filename))
         self.DisplayImage()
@@ -771,7 +766,7 @@ class ControlPanel(wx.Panel):
                 filters.append(f)
         r, g1, g2, b = filters
         g = (g1+g2)/2.0
-        self.filters = {'r': r, 'g': g, 'b': b}
+        self.filters = np.array([r, g, b])
         self.astrometry = False
 
     def GetAstrometry(self):
@@ -789,26 +784,7 @@ class ControlPanel(wx.Panel):
             self.main.guider.Show()
             self.GuiderButton.SetLabel('Hide Guider')
 
-    def DS9Command(self, cmd, url=None, params=None):
-        if params is None:
-            params = {'cmd': cmd}
-        else:
-            params['cmd'] = cmd
-        if url is not None:
-            params['url'] = url
-        message = {'samp.mtype': 'ds9.set', 'samp.params': params}
-        self.samp_client.notify_all(message)
 
-    def DS9SelectFrame(self, frame):
-        self.DS9Command('frame {}'.format(frame))
-
-    def DS9LoadImage(self, path, filename, frame=None):
-        if frame is not None:
-            self.DS9SelectFrame(frame)
-        url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
-        url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
-        self.DS9Command('fits', params={'url': url, 'name': filename})
-        
 class ControlError(Exception):
     def __init__(self, expr=None, msg=None):
         if debug:
