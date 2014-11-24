@@ -4,7 +4,7 @@
 # control.py
 
 # simulate obtaining images for testing
-simulate = True
+simulate = False
 debug = True
 
 import wx
@@ -88,6 +88,8 @@ class ControlPanel(wx.Panel):
 
     def InitTelescope(self):
         if not simulate:
+            # Only in a thread:
+            # win32com.client.pythoncom.CoInitialize()
             self.tel = win32com.client.Dispatch("ASCOM.Celestron.Telescope")
         else:
             self.tel = None
@@ -109,6 +111,8 @@ class ControlPanel(wx.Panel):
 
     def InitCamera(self):
         if not simulate:
+            # Only in a thread:
+            # win32com.client.pythoncom.CoInitialize()
             self.cam = win32com.client.Dispatch("ASCOM.SXMain0.Camera")
         else:
             self.cam = None
@@ -361,6 +365,9 @@ class ControlPanel(wx.Panel):
                 self.samp_client.disconnect()
                 self.tel.Connected = False
                 self.cam.Connected = False
+                # Only in a thread:
+                # win32com.client.pythoncom.CoUninitialize() # tel
+                # win32com.client.pythoncom.CoUninitialize() # cam
             except:
                 pass
         

@@ -6,7 +6,7 @@
 from __future__ import print_function
 
 # simulate obtaining images for testing
-simulate = True
+simulate = False
 
 import numpy as np
 import scipy.stats
@@ -16,6 +16,8 @@ from collections import deque
 import wx
 import threading
 import serial
+import win32com
+import win32com.client
 
 from sxvao import SXVAO
 
@@ -53,14 +55,17 @@ class TakeImageThread(threading.Thread):
     def run(self):
         self.InitCamera()
         self.Log('Started camera')
-        while not self.stopevent.is_set():
-            self.TakeImage(self.exptime)
-        self.Log('Stopped camera')
-        self.Disconnect()
+        try:
+            while not self.stopevent.is_set():
+                self.TakeImage(self.exptime)
+        finally:
+            self.Disconnect()
+            self.Log('Stopped camera')
 
     def InitCamera(self):
         if not simulate:
-            self.cam = win32com.client.Dispatch("ASCOM.SXGuider0.Camera")
+            win32com.client.pythoncom.CoInitialize()
+            self.cam = win32com.client.Dispatch("ASCOM.SXGuide0.Camera")
         else:
             self.Log("Simulating camera")
             self.cam = None
@@ -81,6 +86,7 @@ class TakeImageThread(threading.Thread):
                 self.Log("Disconnected from camera")
             else:
                 self.Log("Unable to disconnect from camera")
+            win32com.client.pythoncom.CoUninitialize()
             
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
@@ -135,48 +141,52 @@ class AOThread(threading.Thread):
             self.Log('Failed to start AO')
         else:
             self.Log('Started AO')
-            last_step_time = 0
-            while not self.stopevent.is_set():
-                # avoid sending corrections too quickly to AO unit
-                dt = time.time() - last_step_time
-                time.sleep(max(0,  self.minsteptime - dt))
-                while True:
+            try:
+                last_step_time = 0
+                while not self.stopevent.is_set():
+                    ## I changed to a deque, but this would all be nicer
+                    ## using a Queue and blocking on get()
+                    # avoid sending corrections too quickly to AO unit
+                    dt = time.time() - last_step_time
+                    time.sleep(max(0,  self.minsteptime - dt))
+                    while True:
+                        try:
+                            # get latest correction                
+                            dx, dy = self.corrections.pop()
+                            break
+                        except IndexError:
+                            # wait until we have a correction to deal with
+                            if self.stopevent.is_set():
+                                break 
+                            time.sleep(self.minsteptime)
+                    if self.stopevent.is_set():
+                        break 
                     try:
-                        # get latest correction                
-                        dx, dy = self.corrections.pop()
-                        break
-                    except IndexError:
-                        # wait until we have a correction to deal with
-                        if self.stopevent.is_set():
-                            break 
-                        time.sleep(self.minsteptime)
-                if self.stopevent.is_set():
-                    break 
-                try:
-                    zero = abs(dx) > 1e-6 or abs(dy) > 1e-6
-                except TypeError:
-                    zero = True
-                if not zero:
-                    # only attempt a correction if significant
-                    if not simulate:
-                        ok = self.AO.MakeCorrection(dx, dy)
-                    if ok:
-                        self.Log('Performed AO correction '
-                                 '({:.2f},{:.2f})'.format(dx, dy))
-                    else:
-                        self.Log('Failed to perform AO correction')
-                    last_step_time = time.time()
-                elif dx == 'K':
-                    if not simulate:
-                        ok = self.AO.Centre()
-                    if ok:
-                        self.Log('Centred AO unit')
-                    else:
-                        self.Log('AO unit centring failed')
-                    last_step_time = time.time()
-            self.Log('Stopped AO')
-            if not simulate:
-                self.AO.Disconnect()
+                        zero = abs(dx) > 1e-6 or abs(dy) > 1e-6
+                    except TypeError:
+                        zero = True
+                    if not zero:
+                        # only attempt a correction if significant
+                        if not simulate:
+                            ok = self.AO.MakeCorrection(dx, dy)
+                        if ok:
+                            self.Log('Performed AO correction '
+                                     '({:.2f},{:.2f})'.format(dx, dy))
+                        else:
+                            self.Log('Failed to perform AO correction')
+                        last_step_time = time.time()
+                    elif dx == 'K':
+                        if not simulate:
+                            ok = self.AO.Centre()
+                        if ok:
+                            self.Log('Centred AO unit')
+                        else:
+                            self.Log('AO unit centring failed')
+                        last_step_time = time.time()
+            finally:
+                if self.AO is not None:
+                    self.AO.Disconnect()
+                self.Log('Stopped AO')
 
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))

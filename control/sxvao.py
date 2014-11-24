@@ -11,7 +11,7 @@ class SXVAO():
                  switch_xy=False, reverse_x=False, reverse_y=False,
                  max_steps=10, steps_limit=1000):
         self.parent = parent
-        self.comport = comport
+        self.comport = 4  #HARDCODE!!!
         self.timeout = timeout
         self.steps_per_pixel = steps_per_pixel
         self.mount_steps_per_pixel = mount_steps_per_pixel
@@ -24,7 +24,7 @@ class SXVAO():
         self.count_steps_N = 0
         self.count_steps_W = 0
     
-    def Connect():
+    def Connect(self):
         if self.ao is None:
             self.ao = serial.Serial(self.comport, timeout=10)
             self.ao.write('X')
@@ -33,12 +33,12 @@ class SXVAO():
         else:
             return False
         
-    def Disconnect():
+    def Disconnect(self):
         if self.ao is not None:
             self.ao.close()
             self.ao = None
 
-    def MakeCorrection(dx, dy):
+    def MakeCorrection(self, dx, dy):
         if self.reverse_x:
             dx = -dx
         if self.reverse_y:
@@ -58,10 +58,10 @@ class SXVAO():
             MakeSteps(dir, n)
             ny -= n
 
-    def DeltaToSteps(d):
+    def DeltaToSteps(self, d):
         return int(round(abs(dx)/self.steps_per_pixel))
 
-    def MakeSteps(dir, n=1):
+    def MakeSteps(self, dir, n=1):
         # dir must be one of [N, S, T, W]
         if dir == 'N':
             self.count_steps_N += n
@@ -82,7 +82,7 @@ class SXVAO():
             self.parent.Log('AO unit stepping failed')
         RecentreMountIfNeeded(force=(response=='L'))
 
-    def MakeMountSteps(dir, n=1):
+    def MakeMountSteps(self, dir, n=1):
         # dir must be one of [N, S, T, W]
         command = 'M{:1s}{:05d}'.format(dir, n)
         self.ao.write(command)
@@ -92,7 +92,7 @@ class SXVAO():
         else:
             self.parent.Log('Mount stepping failed')
         
-    def RecentreMountIfNeeded():
+    def RecentreMountIfNeeded(self):
         # Move to approximately recentre AO with
         # opposing move for scope to keep image stationary
         # North-South
@@ -118,7 +118,7 @@ class SXVAO():
             MakeMountSteps('T', abs(mount_steps_W))
             self.count_steps_W = 0
 
-    def Centre():
+    def Centre(self):
         self.ao.write('K')
         response = self.ao.read(1)
         return response == 'K'
