@@ -14,9 +14,11 @@ import os.path
 from glob import glob
 import numpy as np
 import scipy.stats
-import pyfits
-import urlparse
+import astropy.coordinates as coord
+import astropy.units as u
+import astropy.io.fits as pyfits
 from astropy.vo.samp import SAMPIntegratedClient
+import urlparse
 if debug:
     import traceback
 if not simulate:
@@ -325,8 +327,12 @@ class ControlPanel(wx.Panel):
 
     def UpdatePosition(self):
         if self.tel is not None:
-            self.tel_ra.SetLabel('Tel. RA:  {}'.format(self.tel.RightAscension))
-            self.tel_dec.SetLabel('Dec:  {}'.format(self.tel.Declination))
+            c = ICRSCoordinates(self.tel.RightAscension, self.tel.Declination,
+                                unit=(u.hour, u.degree))
+            ra = c.ra.to_string(u.hour, precision=1, pad=True)
+            dec = c.ra.to_string(u.degree, precision=1, pad=True, alwayssign=True)
+            self.tel_ra.SetLabel('Tel. RA:  ' + ra)
+            self.tel_dec.SetLabel('Dec:  '+dec)
         else:
             self.tel_ra.SetLabel('Tel. RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
