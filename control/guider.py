@@ -11,7 +11,7 @@ simulate = False
 import numpy as np
 import scipy.stats
 import time
-from collections import deque
+from Queue import Queue
 
 import wx
 import threading
@@ -116,10 +116,10 @@ class TakeImageThread(threading.Thread):
 # ------------------------------------------------------------------------------
 # Class to run AO unit on a separate thread
 # When run, this connects to the AO unit and listens to a Queue
-# for corrections to make, until the stopevent flag is set.
+# for corrections to make, until the 'Q' command is received.
 # The AO unit is disconnected before ending.
 class AOThread(threading.Thread):
-    def __init__(self, parent, stopevent, corrections,
+    def __init__(self, parent, corrections,
                  comport, timeout):
         threading.Thread.__init__(self)
         self.parent = parent
@@ -132,7 +132,7 @@ class AOThread(threading.Thread):
 
     def run(self):
         if not simulate:
-            self.AO = SXVAO(self.comport, self.timeout)
+            self.AO = SXVAO(self, self.comport, self.timeout)
             ok = self.AO.Connect()
         else:
             self.Log('Simulating AO')
@@ -143,39 +143,25 @@ class AOThread(threading.Thread):
             self.Log('Started AO')
             try:
                 last_step_time = 0
-                while not self.stopevent.is_set():
-                    ## I changed to a deque, but this would all be nicer
-                    ## using a Queue and blocking on get()
+                while True:
                     # avoid sending corrections too quickly to AO unit
                     dt = time.time() - last_step_time
                     time.sleep(max(0,  self.minsteptime - dt))
-                    while True:
-                        try:
-                            # get latest correction                
-                            dx, dy = self.corrections.pop()
+                    # get the last thing in the queue, in a way that
+                    # avoids never doing anything is the queue is
+                    # currently filling faster than we can empty it
+                    n = self.corrections.qsize()
+                    while n > 0:
+                        n -= 1
+                        c = self.corrections.get()
+                        if c in ['Q', 'K']:
                             break
-                        except IndexError:
-                            # wait until we have a correction to deal with
-                            if self.stopevent.is_set():
-                                break 
-                            time.sleep(self.minsteptime)
-                    if self.stopevent.is_set():
-                        break 
-                    try:
-                        zero = abs(dx) > 1e-6 or abs(dy) > 1e-6
-                    except TypeError:
-                        zero = True
-                    if not zero:
-                        # only attempt a correction if significant
-                        if not simulate:
-                            ok = self.AO.MakeCorrection(dx, dy)
-                        if ok:
-                            self.Log('Performed AO correction '
-                                     '({:.2f},{:.2f})'.format(dx, dy))
-                        else:
-                            self.Log('Failed to perform AO correction')
-                        last_step_time = time.time()
-                    elif dx == 'K':
+                    # process received command
+                    if c == 'Q':
+                        # quit guiding
+                        break
+                    elif c == 'K':
+                        # centre AO unit
                         if not simulate:
                             ok = self.AO.Centre()
                         if ok:
@@ -183,11 +169,48 @@ class AOThread(threading.Thread):
                         else:
                             self.Log('AO unit centring failed')
                         last_step_time = time.time()
+                    else:
+                        # expect (command, dx, dy) correction,
+                        # don't do anything if they are both an
+                        # insignificant fraction of a pixel
+                        done = self.GetAndPerformCorrection(c)
+                        if done:
+                            last_step_time = time.time()
             finally:
                 if self.AO is not None:
                     self.AO.Disconnect()
                 self.Log('Stopped AO')
 
+    def GetAndPerformCorrection(self, c)
+        unknown = True
+        try:
+            command, dx, dy = c
+            zero = abs(dx) > 1e-3 or abs(dy) > 1e-3
+        else:
+            if command = 'G':
+                unknown = False
+                if not zero:
+                    if not simulate:
+                        ok = self.AO.MakeCorrection(dx, dy)
+                    if ok:
+                        self.Log('Performed AO correction '
+                            '({:.2f},{:.2f})'.format(dx, dy))
+                    else:
+                        self.Log('Failed to perform AO correction')
+            elif command = 'M':
+                unknown = False
+                if not zero:
+                    if not simulate:
+                        ok = self.AO.MakeMountCorrection(dx, dy)
+                    if ok:
+                        self.Log('Performed AO mount correction '
+                            '({:.2f},{:.2f})'.format(dx, dy))
+                    else:
+                        self.Log('Failed to perform AO mount correction')
+        if unknown:
+            self.Log('Unknown AO correction '
+                     '({})'.format(c))
+                
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
 
@@ -288,6 +311,13 @@ class GuiderPanel(wx.Panel):
                        flag=wx.ALIGN_CENTER_VERTICAL|wx.LEFT, border=5)
 
     def InitGuidingButtons(self, panel, box):
+        self.TrainGuidingButton = wx.Button(panel, label='Train Guiding')
+        self.TrainGuidingButton.Bind(wx.EVT_BUTTON, self.TrainGuiding)
+        self.TrainGuidingButton.SetToolTip(wx.ToolTip(
+            'Automatically train guiding system'))
+        self.TrainGuidingButton.Disable()
+        box.Add(self.TrainGuidingButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+                border=10)
         self.ToggleGuidingButton = wx.Button(panel, label='Start Guiding')
         self.ToggleGuidingButton.Bind(wx.EVT_BUTTON, self.ToggleGuiding)
         self.ToggleGuidingButton.SetToolTip(wx.ToolTip(
@@ -303,12 +333,15 @@ class GuiderPanel(wx.Panel):
         if self.camera_on:
             self.StopCamera()
             self.ToggleCameraButton.SetLabel('Start Camera')
+            self.TrainGuidingButton.Disable()
             self.ToggleGuidingButton.Disable()
         else:
             self.StartCamera()
             self.ToggleCameraButton.SetLabel('Stop Camera')
             if self.guide_box_position is not None:
-                self.ToggleGuidingButton.Enable()
+                self.TrainGuidingButton.Enable()
+                if self.AOtrained:
+                    self.ToggleGuidingButton.Enable()
 
     def ToggleGuiding(self, e):
         if self.guiding_on:
@@ -332,33 +365,98 @@ class GuiderPanel(wx.Panel):
     def StopCamera(self):
         self.stop_camera.set()
         self.camera_on = False
-        #self.ImageTaker.join()
 
     def InitAO(self):
-        AOCENTRE = ('K', 'K')
         self.StartGuiding()
-        self.AOcorrections.appendleft(AOCENTRE)
+        self.AOcorrections.put('K')
         time.sleep(0.1)
         self.StopGuiding()
         
     def StartGuiding(self):
         self.guiding_on = True
-        self.stop_guiding = threading.Event()
-        self.AOcorrections = deque(maxlen=1)
-        self.AO = AOThread(self, self.stop_guiding, self.AOcorrections,
+        self.AOcorrections = Queue()
+        self.AO = AOThread(self, self.AOcorrections,
                            self.comport, self.timeout)
         self.AO.start()
 
     def StopGuiding(self):
-        self.stop_guiding.set()
+        self.AOcorrections.put('Q')
         self.guiding_on = False
-        #self.AO.join()
+
+    def TrainAO(self):
+        self.StartGuiding()
+        self.Log('Training AO')
+        # Train AO unit
+        for delta in [0.3, 1.0, 3.0]:
+            dpix = self.guide_box_size * delta
+            movebox = delta>0.5
+            # check x versus y and get step factor
+            dx, dy = self.AObracket(0, dpix, movebox)
+            if abs(dx) < abs(dy):
+                self.Log('Switching x and y axes')
+                self.AO.switch_xy = not self.AO.switch_xy
+                dx, dy = dy, dx
+            factor = abs(dx) / dpix
+            self.AO.steps_per_pixel /= factor
+            self.Log('steps_per_pixel = {:.2f}'.format(self.steps_per_pixel))
+            # check x direction
+            dx, dy = self.AObracket(0, dpix, movebox)
+            if dx < 0:
+                self.AO.reverse_x = not self.AO.reverse_x
+            self.Log('reverse_x = {}'.format(self.reverse_x))
+            # check y direction
+            dx, dy = self.AObracket(1, dpix, movebox)
+            if dy < 0:
+                self.AO.reverse_y = not self.AO.reverse_y
+            self.Log('reverse_y = {}'.format(self.reverse_y))
+        # Train AO mount
+        for delta in [0.3, 1.0, 3.0]:
+            dpix = self.guide_box_size * delta
+            movebox = delta>0.5
+            # check x versus y and get step factor
+            dx, dy = self.AObracket(0, dpix, movebox, mount=True)
+            if abs(dx) < abs(dy):
+                self.Log('Switching x and y axes')
+                self.AO.mount_switch_xy = not self.AO.mount_switch_xy
+                dx, dy = dy, dx
+            factor = abs(dx) / dpix
+            self.AO.mount_steps_per_pixel /= factor
+            self.Log('steps_per_pixel = {:.2f}'.format(self.steps_per_pixel))
+            # check x direction
+            dx, dy = self.AObracket(0, dpix, movebox, mount=True)
+            if dx < 0:
+                self.AO.mount_reverse_x = not self.AO.mount_reverse_x
+            self.Log('reverse_x = {}'.format(self.reverse_x))
+            # check y direction
+            dx, dy = self.AObracket(1, dpix, movebox, mount=True)
+            if dy < 0:
+                self.AO.mount_reverse_y = not self.AO.mount_reverse_y
+            self.Log('reverse_y = {}'.format(self.reverse_y))
+        self.AOtrained = True
+        self.ToggleGuidingButton.Enable()
+
+    def AObracket(self, axis, dpix, movebox, mount=False):
+        if mount:
+            command = 'M'
+        else:
+            command = 'G'
+        self.AOcorrections.put((command, -dpix, 0.0))
+        time.sleep(0.5)
+        dx1, dy1 = CentroidBox()
+        self.AOcorrections.put((command, 2.0*dpix, 0.0))
+        time.sleep(0.5)
+        dx2, dy2 = CentroidBox()
+        self.AOcorrections.put((command, -dpix, 0.0))
+        time.sleep(0.5)
+        return (dx2-dx1), (dy2-dy1)
         
     def UpdateImageDisplay(self):
         wd, hd = self.ImageDisplay.Size
         wi, hi = self.image.shape
         # scale image levels from 5th to 100th percentile
         imin, imax = np.percentile(self.image, (5.0, 100.0))
+        # but do not exaggerate really low counts
+        imax = max(imax, imin+16)
         image = ((self.image-imin)/(imax-imin) * 255).clip(0, 255)
         # convert to RGB (but still greyscale)
         image = image.T.astype('uint8')
@@ -431,7 +529,7 @@ class GuiderPanel(wx.Panel):
         dx, dy = self.CentroidBox()
         dx = dx if (abs(dx) > self.min_guide_correction) else 0.0
         dy = dy if (abs(dy) > self.min_guide_correction) else 0.0
-        self.AOcorrections.appendleft((dx, dy))
+        self.AOcorrections.put(('G', dx, dy))
             
     def CentroidBox(self):
         xc, yc, size = self.GetRectCorner(self.guide_box_position.x,

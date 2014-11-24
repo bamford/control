@@ -6,20 +6,22 @@ import serial
 
 
 class SXVAO():
-    def __init__(self, parent, comport, timeout=10,
-                 steps_per_pixel=6.0, mount_steps_per_pixel=6.0,
-                 switch_xy=False, reverse_x=False, reverse_y=False,
-                 max_steps=10, steps_limit=1000):
+    def __init__(self, parent, comport, timeout=10):
         self.parent = parent
-        self.comport = 4  #HARDCODE!!!
+        self.comport = comport
         self.timeout = timeout
-        self.steps_per_pixel = steps_per_pixel
-        self.mount_steps_per_pixel = mount_steps_per_pixel
-        self.switch_xy = switch_xy
-        self.reverse_x = reverse_x
-        self.reverse_y = reverse_y
-        self.max_steps = max_steps
-        self.steps_limit = steps_limit
+        # configuration attributes
+        self.steps_per_pixel = 6.0
+        self.switch_xy = False
+        self.reverse_x = False
+        self.reverse_y = False
+        self.mount_steps_per_pixel = 6.0
+        self.mount_switch_xy = False
+        self.mount_reverse_x = False
+        self.mount_reverse_y = False
+        self.max_steps = 10
+        self.steps_limit = 1000
+        # internal variables
         self.ao = None
         self.count_steps_N = 0
         self.count_steps_W = 0
@@ -57,6 +59,20 @@ class SXVAO():
             n = ny%self.max_steps
             MakeSteps(dir, n)
             ny -= n
+
+    def MakeMountCorrection(self, dx, dy):
+        if self.mount_reverse_x:
+            dx = -dx
+        if self.mount_reverse_y:
+            dy = -dy
+        if self.mount_switch_xy:
+            dx, dy = dy, dx
+        nx = self.DeltaToMountSteps(dx)
+        dir = 'T' if dx > 0 else 'W'
+        MakeMountSteps(dir, nx)
+        ny = self.DeltaToMountSteps(dy)
+        dir = 'N' if dy > 0 else 'S'
+        MakeMountSteps(dir, ny)
 
     def DeltaToSteps(self, d):
         return int(round(abs(dx)/self.steps_per_pixel))
