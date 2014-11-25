@@ -6,11 +6,12 @@
 from __future__ import print_function
 
 # simulate obtaining images for testing
-simulate = True
+simulate = False
 
 import numpy as np
 import scipy.stats
 import time
+from datetime import datetime
 from Queue import Queue
 
 import wx
@@ -26,9 +27,11 @@ from sxvao import SXVAO
 myEVT_IMAGEREADY = wx.NewEventType()
 EVT_IMAGEREADY = wx.PyEventBinder(myEVT_IMAGEREADY, 1)
 class ImageReadyEvent(wx.PyCommandEvent):
-    def __init__(self, etype=myEVT_IMAGEREADY, eid=wx.ID_ANY, image=None):
+    def __init__(self, etype=myEVT_IMAGEREADY, eid=wx.ID_ANY, image=None,
+                 image_time=None):
         wx.PyCommandEvent.__init__(self, etype, eid)
         self.image = image
+        self.image_time = image_time
 
 # ------------------------------------------------------------------------------        
 # Event to signal a new log entry is pending
@@ -51,6 +54,7 @@ class TakeImageThread(threading.Thread):
         self.stopevent = stopevent
         self.exptime = exptime
         self.cam = None
+        self.imagecount = 0
 
     def run(self):
         self.InitCamera()
@@ -93,6 +97,7 @@ class TakeImageThread(threading.Thread):
         wx.PostEvent(self.parent, LogEvent(text=text))
         
     def TakeImage(self, exptime):
+        image_time = datetime.utcnow()
         if self.cam is not None:
             self.cam.StartExposure(exptime, True)
             time.sleep(exptime)
@@ -112,7 +117,8 @@ class TakeImageThread(threading.Thread):
             image[x:x+size,y:y+size] += star * flux
             image = np.random.poisson(image)
             image += np.random.normal(800, 20, size=shape)
-        wx.PostEvent(self.parent, ImageReadyEvent(image=image))
+        wx.PostEvent(self.parent, ImageReadyEvent(image=image,
+                                                  image_time=image_time))
 
 # ------------------------------------------------------------------------------
 # Class to run AO unit on a separate thread
@@ -312,6 +318,7 @@ class GuiderPanel(wx.Panel):
         self.guide_box_position = None
         self.guide_centroid = None
         self.image = None
+        self.imagecount = None
         self.AOtrained = False
         self.InitPanel()
         self.InitAO()
@@ -443,12 +450,10 @@ class GuiderPanel(wx.Panel):
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
             self.AO.adjust_steps_per_pixel(factor)
-            # check x direction
-            dx, dy = self.AObracket(0, dpix, movebox)
+            # check x and y directions
+            dx, dy = self.AObracket(dpix, dpix, movebox)
             if dx < 0:
                 self.AO.toggle_reverse_x()
-            # check y direction
-            dx, dy = self.AObracket(1, dpix, movebox)
             if dy < 0:
                 self.AO.toggle_reverse_y()
         # Train AO mount
@@ -462,17 +467,16 @@ class GuiderPanel(wx.Panel):
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
             self.AO.adjust_mount_steps_per_pixel(factor)
-            # check x direction
+            # check x and y direction
             dx, dy = self.AObracket(0, dpix, movebox, mount=True)
             if dx < 0:
                 self.AO.toggle_mount_reverse_x()
-            # check y direction
-            dx, dy = self.AObracket(1, dpix, movebox, mount=True)
             if dy < 0:
                 self.AO.toggle_mount_reverse_y()
         self.AOtrained = True
         self.ToggleGuidingButton.Enable()
         self.ToggleCameraButton.Enable()
+        self.Log('AO training complete')
 
     def AObracket(self, axis, dpix, movebox, mount=False):
         if mount:
@@ -482,16 +486,26 @@ class GuiderPanel(wx.Panel):
         self.AOcorrections.put((command, -dpix, 0.0))
         wx.Yield()
         time.sleep(0.5)
+        self.WaitForNextImage()
         dx1, dy1 = self.CentroidBox()
         self.AOcorrections.put((command, 2.0*dpix, 0.0))
         wx.Yield()
         time.sleep(0.5)
+        self.WaitForNextImage()
         dx2, dy2 = self.CentroidBox()
         self.AOcorrections.put((command, -dpix, 0.0))
         wx.Yield()
         time.sleep(0.5)
         return (dx2-dx1), (dy2-dy1)
-        
+
+    def WaitForNextImage(self):
+        t = self.image_time
+        for i in range(100):  # max 10 sec
+            wx.Yield()
+            if t != self.image_time or t is None:
+                break
+            time.sleep(0.1)
+
     def UpdateImageDisplay(self):
         wd, hd = self.ImageDisplay.Size
         wi, hi = self.image.shape
@@ -564,6 +578,7 @@ class GuiderPanel(wx.Panel):
         
     def OnImageReady(self, event):
         self.image = event.image
+        self.image_time = event.image_time
         if self.guiding_on:
             self.Guide()
         self.UpdateImageDisplay()
