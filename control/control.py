@@ -4,7 +4,7 @@
 # control.py
 
 # simulate obtaining images for testing
-simulate = False
+simulate = True
 debug = True
 
 import wx
@@ -18,7 +18,7 @@ import scipy.stats
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
-import pyds9
+import pyds9  # requires version from https://github.com/bamford/pyds9
 import urlparse
 if debug:
     import traceback
@@ -131,11 +131,11 @@ class ControlPanel(wx.Panel):
     def InitDS9(self):
         self.Log('Attempting to set up DS9')
         try:
-            self.ds9 = pyds9.ds9('control_display')
+            self.ds9 = pyds9.DS9('control_display')
         except:
             self.Log('Could not set up DS9')
             self.ds9 = None
-        if ds9 is not None:
+        if self.ds9 is not None:
             self.ds9.set('frame delete all')
             self.ds9.set('tile')
             self.ds9.set('frame new')
@@ -427,7 +427,7 @@ class ControlPanel(wx.Panel):
                     self.Log('Taken bias {:d}'.format(i+1))
                     self.CheckForAbort()
                     self.SaveImage('bias')
-                    self.SaveRGBImages('bias')
+                    #self.SaveRGBImages('bias')
                     self.CheckForAbort()
                     if i==0:
                         bias_stack = np.zeros((nbias,)+self.image.shape,
@@ -438,7 +438,7 @@ class ControlPanel(wx.Panel):
                 self.CheckForAbort()
                 self.bias = self.image
                 self.SaveImage('masterbias')
-                self.SaveRGBImages('masterbias')
+                #self.SaveRGBImages('masterbias')
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Bias images aborted')
@@ -469,7 +469,6 @@ class ControlPanel(wx.Panel):
                         self.Log('Taken flat {:d}'.format(i+1))
                         self.CheckForAbort()
                         self.SaveImage('flat')
-                        self.SaveRGBImages('flat')
                         self.Log('Taken flat {:d}'.format(i+1))
                         self.CheckForAbort()
                         self.OffsetTelescope(self.flat_offset)
@@ -480,6 +479,7 @@ class ControlPanel(wx.Panel):
                         ok = self.BiasSubtract()
                         if not ok:
                             raise ControlError('Cannot create flat without bias')
+                        self.SaveRGBImages('flat')
                         flat_stack[i] = self.image
                         self.CheckForAbort()
                 self.ProcessFlat(flat_stack)
@@ -680,10 +680,12 @@ class ControlPanel(wx.Panel):
         else:
             self.Log('NOT taking exposure of {:.3f} sec'.format(exptime))
             time.sleep(0.1)
-            shape = (3040, 2024)
-            if self.flat is None:
+            shape = (2024, 3040)
+            if self.bias is None:
+                self.image = np.zeros(shape)
+            elif self.flat is None:
                 self.image = np.random.poisson(10000 * exptime, size=shape)
-                #self.image *= np.arange(shape[0])/(2.0*shape[0]) + 0.75
+                self.image *= np.arange(shape[1])/(2.0*shape[0]) + 0.75
             else:
                 size = 23
                 g = scipy.stats.norm.pdf(np.arange(size), (size-1)/2.0, 4.0)
@@ -694,7 +696,7 @@ class ControlPanel(wx.Panel):
                     y = np.random.choice(self.image.shape[1]-size)
                     flux = np.random.poisson(100) * 500
                     self.image[x:x+size,y:y+size] += star * flux
-                #self.image *= np.arange(shape[0])/(2.0*shape[0]) + 0.75 
+                self.image *= np.arange(shape[1])/(2.0*shape[0]) + 0.75 
                 self.image = np.random.poisson(self.image)
             self.image += np.random.normal(800, 20, size=shape)
         self.filters = None  # do not use filters until debayered
@@ -703,26 +705,12 @@ class ControlPanel(wx.Panel):
         # adapted from pyds9.set_np2arr
         if self.ds9 is not None:
             self.ds9.set('frame 1')
-            if not self.image.flags['C_CONTIGUOUS']:
-                self.image = np.ascontiguousarray(self.image)
-            bp = pyds9._np2bp(self.image.dtype)
-            buf = self.image.tostring('C')
-            blen = len(self.image.data)
-            (w, h) = self.image.shape
-            paramlist = 'array [xdim=%d,ydim=%d,bitpix=%d]' % (h, w, bp)
-            self.ds9.set(paramlist, buf, blen+1)
+            self.ds9.set_np2arr(self.image)
         
     def DisplayRGBImage(self):
         if self.ds9 is not None:
             self.ds9.set('frame 2')
-            if not self.filters.flags['C_CONTIGUOUS']:
-                self.filters = np.ascontiguousarray(self.filters)
-            bp = pyds9._np2bp(self.filters.dtype)
-            buf = self.filters.tostring('C')
-            blen = len(self.filters.data)
-            (z, w, h) = self.filters.shape
-            paramlist = 'array [xdim=%d,ydim=%d,zdim=%d,bitpix=%d]' % (h, w, z, bp)
-            self.ds9.set(paramlist, buf, blen+1)
+            self.ds9.set_np2arr(self.filters, rgb=True)
 
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()

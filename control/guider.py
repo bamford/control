@@ -6,7 +6,7 @@
 from __future__ import print_function
 
 # simulate obtaining images for testing
-simulate = False
+simulate = True
 
 import numpy as np
 import scipy.stats
@@ -16,8 +16,8 @@ from Queue import Queue
 import wx
 import threading
 import serial
-import win32com
-import win32com.client
+if not simulate:
+    import win32com.client
 
 from sxvao import SXVAO
 
@@ -86,6 +86,7 @@ class TakeImageThread(threading.Thread):
                 self.Log("Disconnected from camera")
             else:
                 self.Log("Unable to disconnect from camera")
+            self.cam = None
             win32com.client.pythoncom.CoUninitialize()
             
     def Log(self, text):
@@ -123,17 +124,16 @@ class AOThread(threading.Thread):
                  comport, timeout):
         threading.Thread.__init__(self)
         self.parent = parent
-        self.stopevent = stopevent
         self.corrections = corrections
         self.comport = comport
         self.timeout = timeout
         self.minsteptime = 0.1  # seconds
-        self.AO = None
+        self.AOunit = None
 
     def run(self):
         if not simulate:
-            self.AO = SXVAO(self, self.comport, self.timeout)
-            ok = self.AO.Connect()
+            self.AOunit = SXVAO(self, self.comport, self.timeout)
+            ok = self.AOunit.Connect()
         else:
             self.Log('Simulating AO')
             ok = True
@@ -150,6 +150,7 @@ class AOThread(threading.Thread):
                     # get the last thing in the queue, in a way that
                     # avoids never doing anything is the queue is
                     # currently filling faster than we can empty it
+                    c = self.corrections.get()
                     n = self.corrections.qsize()
                     while n > 0:
                         n -= 1
@@ -163,7 +164,7 @@ class AOThread(threading.Thread):
                     elif c == 'K':
                         # centre AO unit
                         if not simulate:
-                            ok = self.AO.Centre()
+                            ok = self.AOunit.Centre()
                         if ok:
                             self.Log('Centred AO unit')
                         else:
@@ -177,31 +178,34 @@ class AOThread(threading.Thread):
                         if done:
                             last_step_time = time.time()
             finally:
-                if self.AO is not None:
-                    self.AO.Disconnect()
+                if self.AOunit is not None:
+                    self.AOunit.Disconnect()
                 self.Log('Stopped AO')
 
-    def GetAndPerformCorrection(self, c)
+    def GetAndPerformCorrection(self, c):
         unknown = True
+        ok = True
         try:
             command, dx, dy = c
             zero = abs(dx) > 1e-3 or abs(dy) > 1e-3
+        except:
+            pass
         else:
-            if command = 'G':
+            if command == 'G':
                 unknown = False
                 if not zero:
                     if not simulate:
-                        ok = self.AO.MakeCorrection(dx, dy)
+                        ok = self.AOunit.MakeCorrection(dx, dy)
                     if ok:
                         self.Log('Performed AO correction '
                             '({:.2f},{:.2f})'.format(dx, dy))
                     else:
                         self.Log('Failed to perform AO correction')
-            elif command = 'M':
+            elif command == 'M':
                 unknown = False
                 if not zero:
                     if not simulate:
-                        ok = self.AO.MakeMountCorrection(dx, dy)
+                        ok = self.AOunit.MakeMountCorrection(dx, dy)
                     if ok:
                         self.Log('Performed AO mount correction '
                             '({:.2f},{:.2f})'.format(dx, dy))
@@ -213,6 +217,47 @@ class AOThread(threading.Thread):
                 
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
+
+    def toggle_switch_xy(self):
+        if self.AOunit is not None:
+            self.AOunit.switch_xy = not self.AOunit.switch_xy
+            self.Log('switch_xy = {:.2f}'.format(self.AOunit.switch_xy))
+
+    def toggle_reverse_x(self):
+        if self.AOunit is not None:
+            self.AOunit.reverse_x = not self.AOunit.reverse_x
+            self.Log('reverse_x = {:.2f}'.format(self.AOunit.reverse_x))
+
+    def toggle_reverse_y(self):
+        if self.AOunit is not None:
+            self.AOunit.reverse_y = not self.AOunit.reverse_y
+            self.Log('reverse_y = {:.2f}'.format(self.AOunit.reverse_y))
+
+    def adjust_steps_per_pixel(self, factor):
+        if self.AOunit is not None:
+            self.AOunit.steps_per_pixel /= factor
+            self.Log('steps_per_pixel = {:.2f}'.format(self.AOunit.steps_per_pixel))
+
+    def toggle_mount_switch_xy(self):
+        if self.AOunit is not None:
+            self.AOunit.mount_switch_xy = not self.AOunit.mount_switch_xy
+            self.Log('mount_switch_xy = {:.2f}'.format(self.AOunit.mount_switch_xy))
+
+    def toggle_mount_reverse_x(self):
+        if self.AOunit is not None:
+            self.AOunit.mount_reverse_x = not self.AOunit.mount_reverse_x
+            self.Log('mount_reverse_x = {:.2f}'.format(self.AOunit.mount_reverse_x))
+
+    def toggle_mount_reverse_y(self):
+        if self.AOunit is not None:
+            self.AOunit.mount_reverse_y = not self.AOunit.mount_reverse_y
+            self.Log('mount_reverse_y = {:.2f}'.format(self.AOunit.mount_reverse_y))
+
+    def adjust_mount_steps_per_pixel(self, factor):
+        if self.AOunit is not None:
+            self.AOunit.mount_steps_per_pixel /= factor
+            self.Log('mount_steps_per_pixel = {:.2f}'.format(self.AOunit.mount_steps_per_pixel))
+        
 
 # ------------------------------------------------------------------------------
 # The main Guider frame
@@ -227,7 +272,8 @@ class Guider(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.Bind(EVT_LOG, self.panel.OnLog)
         self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
-        self.Show(True)
+        if self.parent is None:
+            self.Show(True)
         
     def __DoLayout(self):
         self.panel = GuiderPanel(self)
@@ -266,6 +312,7 @@ class GuiderPanel(wx.Panel):
         self.guide_box_position = None
         self.guide_centroid = None
         self.image = None
+        self.AOtrained = False
         self.InitPanel()
         self.InitAO()
 
@@ -369,21 +416,20 @@ class GuiderPanel(wx.Panel):
     def InitAO(self):
         self.StartGuiding()
         self.AOcorrections.put('K')
-        time.sleep(0.1)
         self.StopGuiding()
         
     def StartGuiding(self):
-        self.guiding_on = True
         self.AOcorrections = Queue()
         self.AO = AOThread(self, self.AOcorrections,
                            self.comport, self.timeout)
         self.AO.start()
 
     def StopGuiding(self):
-        self.AOcorrections.put('Q')
         self.guiding_on = False
+        self.AOcorrections.put('Q')
 
-    def TrainAO(self):
+    def TrainGuiding(self, e):
+        self.ToggleCameraButton.Disable()
         self.StartGuiding()
         self.Log('Training AO')
         # Train AO unit
@@ -393,22 +439,18 @@ class GuiderPanel(wx.Panel):
             # check x versus y and get step factor
             dx, dy = self.AObracket(0, dpix, movebox)
             if abs(dx) < abs(dy):
-                self.Log('Switching x and y axes')
-                self.AO.switch_xy = not self.AO.switch_xy
+                self.AO.toggle_switch_xy()
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
-            self.AO.steps_per_pixel /= factor
-            self.Log('steps_per_pixel = {:.2f}'.format(self.steps_per_pixel))
+            self.AO.adjust_steps_per_pixel(factor)
             # check x direction
             dx, dy = self.AObracket(0, dpix, movebox)
             if dx < 0:
-                self.AO.reverse_x = not self.AO.reverse_x
-            self.Log('reverse_x = {}'.format(self.reverse_x))
+                self.AO.toggle_reverse_x()
             # check y direction
             dx, dy = self.AObracket(1, dpix, movebox)
             if dy < 0:
-                self.AO.reverse_y = not self.AO.reverse_y
-            self.Log('reverse_y = {}'.format(self.reverse_y))
+                self.AO.toggle_reverse_y()
         # Train AO mount
         for delta in [0.3, 1.0, 3.0]:
             dpix = self.guide_box_size * delta
@@ -416,24 +458,21 @@ class GuiderPanel(wx.Panel):
             # check x versus y and get step factor
             dx, dy = self.AObracket(0, dpix, movebox, mount=True)
             if abs(dx) < abs(dy):
-                self.Log('Switching x and y axes')
-                self.AO.mount_switch_xy = not self.AO.mount_switch_xy
+                self.AO.toggle_mount_switch_xy()
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
-            self.AO.mount_steps_per_pixel /= factor
-            self.Log('steps_per_pixel = {:.2f}'.format(self.steps_per_pixel))
+            self.AO.adjust_mount_steps_per_pixel(factor)
             # check x direction
             dx, dy = self.AObracket(0, dpix, movebox, mount=True)
             if dx < 0:
-                self.AO.mount_reverse_x = not self.AO.mount_reverse_x
-            self.Log('reverse_x = {}'.format(self.reverse_x))
+                self.AO.toggle_mount_reverse_x()
             # check y direction
             dx, dy = self.AObracket(1, dpix, movebox, mount=True)
             if dy < 0:
-                self.AO.mount_reverse_y = not self.AO.mount_reverse_y
-            self.Log('reverse_y = {}'.format(self.reverse_y))
+                self.AO.toggle_mount_reverse_y()
         self.AOtrained = True
         self.ToggleGuidingButton.Enable()
+        self.ToggleCameraButton.Enable()
 
     def AObracket(self, axis, dpix, movebox, mount=False):
         if mount:
@@ -441,12 +480,15 @@ class GuiderPanel(wx.Panel):
         else:
             command = 'G'
         self.AOcorrections.put((command, -dpix, 0.0))
+        wx.Yield()
         time.sleep(0.5)
-        dx1, dy1 = CentroidBox()
+        dx1, dy1 = self.CentroidBox()
         self.AOcorrections.put((command, 2.0*dpix, 0.0))
+        wx.Yield()
         time.sleep(0.5)
-        dx2, dy2 = CentroidBox()
+        dx2, dy2 = self.CentroidBox()
         self.AOcorrections.put((command, -dpix, 0.0))
+        wx.Yield()
         time.sleep(0.5)
         return (dx2-dx1), (dy2-dy1)
         
@@ -481,7 +523,7 @@ class GuiderPanel(wx.Panel):
             size = self.guide_box_size * wd / float(wi)
             dc = wx.MemoryDC(bitmap)
             dc.SetPen(wx.Pen(wx.Colour(0, 255, 0, 127), 2))
-            dc.SetBrush(wx.Brush(wx.Colour(0, 255, 0, 31)))
+            dc.SetBrush(wx.TRANSPARENT_BRUSH)
             xc, yc, size = self.GetRectCorner(x, y, size)
             dc.DrawRectangle(xc, yc, size, size)
             if self.guide_centroid is not None:
@@ -499,25 +541,26 @@ class GuiderPanel(wx.Panel):
         return xc, yc, size
         
     def OnClickImage(self, event):
-        wd, hd = self.ImageDisplay.Size
         if self.image is not None:
+            wd, hd = self.ImageDisplay.Size
             wi, hi = self.image.shape
-        else:
-            wi, hi = wd, hd
-        pos = event.GetPosition()
-        # convert position in ImageDisplay to position in image
-        x = int(round(wi * (pos.x-1) / float(wd)))
-        y = int(round(hi * (pos.y-1) / float(hd)))
-        self.guide_box_position = wx.Point(x, y)
-        # move box to centroid
-        for i in range(3):
-            dx, dy = self.CentroidBox()
-            self.guide_box_position.x += int(round(dx))
-            self.guide_box_position.y += int(round(dy))
-            self.CentroidBox()
-        self.ToggleGuidingButton.Enable()
-        self.Log('Guide box centred at ({:d},{:d})'.format(
-            self.guide_box_position.x, self.guide_box_position.y))
+            pos = event.GetPosition()
+            # convert position in ImageDisplay to position in image
+            x = int(round(wi * (pos.x-1) / float(wd)))
+            y = int(round(hi * (pos.y-1) / float(hd)))
+            self.guide_box_position = wx.Point(x, y)
+            # move box to centroid
+            for i in range(3):
+                dx, dy = self.CentroidBox()
+                self.guide_box_position.x += int(round(dx))
+                self.guide_box_position.y += int(round(dy))
+                self.CentroidBox()
+            if self.camera_on:
+                self.TrainGuidingButton.Enable()
+                if self.AOtrained:
+                    self.ToggleGuidingButton.Enable()
+            self.Log('Guide box centred at ({:d},{:d})'.format(
+                self.guide_box_position.x, self.guide_box_position.y))
         
     def OnImageReady(self, event):
         self.image = event.image
