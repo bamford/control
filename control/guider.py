@@ -187,7 +187,7 @@ class AOThread(threading.Thread):
         ok = True
         try:
             command, dx, dy = c
-            zero = abs(dx) > 1e-3 or abs(dy) > 1e-3
+            zero = abs(dx) < 1e-3 and abs(dy) < 1e-3
         except:
             pass
         else:
