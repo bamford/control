@@ -51,13 +51,13 @@ class SXVAO():
         dir = 'T' if dx > 0 else 'W'
         while nx > 0:
             n = nx%self.max_steps
-            MakeSteps(dir, n)
+            self.MakeSteps(dir, n)
             nx -= n
         ny = self.DeltaToSteps(dy)
         dir = 'N' if dy > 0 else 'S'
         while ny > 0:
             n = ny%self.max_steps
-            MakeSteps(dir, n)
+            self.MakeSteps(dir, n)
             ny -= n
 
     def MakeMountCorrection(self, dx, dy):
@@ -69,13 +69,13 @@ class SXVAO():
             dx, dy = dy, dx
         nx = self.DeltaToMountSteps(dx)
         dir = 'T' if dx > 0 else 'W'
-        MakeMountSteps(dir, nx)
+        self.MakeMountSteps(dir, nx)
         ny = self.DeltaToMountSteps(dy)
         dir = 'N' if dy > 0 else 'S'
-        MakeMountSteps(dir, ny)
+        self.MakeMountSteps(dir, ny)
 
     def DeltaToSteps(self, d):
-        return int(round(abs(dx)/self.steps_per_pixel))
+        return int(round(abs(d)/self.steps_per_pixel))
 
     def MakeSteps(self, dir, n=1):
         # dir must be one of [N, S, T, W]
@@ -96,7 +96,7 @@ class SXVAO():
             self.parent.Log('AO unit hit limit')
         else:
             self.parent.Log('AO unit stepping failed')
-        RecentreMountIfNeeded(force=(response=='L'))
+        self.RecentreMountIfNeeded(force=(response=='L'))
 
     def MakeMountSteps(self, dir, n=1):
         # dir must be one of [N, S, T, W]
@@ -115,23 +115,23 @@ class SXVAO():
         mount_steps_N = (self.count_steps_N * self.mount_steps_per_pixel
                          / self.steps_per_pixel)
         if self.count_steps_N > self.steps_limit:
-            MakeSteps('S', abs(self.count_steps_N))
-            MakeMountSteps('N', abs(mount_steps_N))
+            self.MakeSteps('S', abs(self.count_steps_N))
+            self.MakeMountSteps('N', abs(mount_steps_N))
             self.count_steps_N = 0
         elif self.count_steps_N < -self.steps_limit:
-            MakeSteps('N', abs(self.count_steps_N))
-            MakeMountSteps('S', abs(mount_steps_N))
+            self.MakeSteps('N', abs(self.count_steps_N))
+            self.MakeMountSteps('S', abs(mount_steps_N))
             self.count_steps_N = 0
         # West-East
         mount_steps_W = (self.count_steps_W * self.mount_steps_per_pixel
                          / self.steps_per_pixel)
         if self.count_steps_W > self.steps_limit:
-            MakeSteps('T', abs(self.count_steps_W))
-            MakeMountSteps('W', abs(mount_steps_W))
+            self.MakeSteps('T', abs(self.count_steps_W))
+            self.MakeMountSteps('W', abs(mount_steps_W))
             self.count_steps_W = 0
         elif self.count_steps_W < -self.steps_limit:
-            MakeSteps('W', abs(self.count_steps_W))
-            MakeMountSteps('T', abs(mount_steps_W))
+            self.MakeSteps('W', abs(self.count_steps_W))
+            self.MakeMountSteps('T', abs(mount_steps_W))
             self.count_steps_W = 0
 
     def Centre(self):

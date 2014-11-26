@@ -48,10 +48,11 @@ class LogEvent(wx.PyCommandEvent):
 # with the given exposure time until the stopevent flag is set.
 # The camera is disconnected before ending.
 class TakeImageThread(threading.Thread):
-    def __init__(self, parent, stopevent, exptime):
+    def __init__(self, parent, stopevent, onevent, exptime):
         threading.Thread.__init__(self)
         self.parent = parent
         self.stopevent = stopevent
+        self.onevent = onevent
         self.exptime = exptime
         self.cam = None
         self.imagecount = 0
@@ -61,7 +62,8 @@ class TakeImageThread(threading.Thread):
         self.Log('Started camera')
         try:
             while not self.stopevent.is_set():
-                self.TakeImage(self.exptime)
+                if self.onevent.wait(1.0):
+                    self.TakeImage(self.exptime)
         finally:
             self.Disconnect()
             self.Log('Stopped camera')
@@ -77,11 +79,22 @@ class TakeImageThread(threading.Thread):
         
     def Connect(self):
         if self.cam is not None:
-            self.cam.Connected = True
-            if self.cam.Connected:
-                self.Log("Connected to camera")
-            else:
+            for i in range(3):
+                try:
+                    self.cam.Connected = False
+                    self.cam.Connected = True
+                except:
+                    self.Log("Problem connecting to camera")
+                    self.Log("Trying again in 20 sec")
+                    time.sleep(20)
+                else:
+                    self.Log("Connected to camera")
+                    break
+            if not self.cam.Connected:
                 self.Log("Unable to connect to camera")
+        self.onevent.set()
+        time.sleep(1.0)
+        self.onevent.clear()
 
     def Disconnect(self):
         if self.cam is not None:
@@ -93,6 +106,9 @@ class TakeImageThread(threading.Thread):
             self.cam = None
             win32com.client.pythoncom.CoUninitialize()
             
+    def SetExpTime(self, exptime):
+        self.exptime = exptime
+
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
         
@@ -160,9 +176,9 @@ class AOThread(threading.Thread):
                     n = self.corrections.qsize()
                     while n > 0:
                         n -= 1
-                        c = self.corrections.get()
                         if c in ['Q', 'K']:
                             break
+                        c = self.corrections.get()
                     # process received command
                     if c == 'Q':
                         # quit guiding
@@ -227,17 +243,17 @@ class AOThread(threading.Thread):
     def toggle_switch_xy(self):
         if self.AOunit is not None:
             self.AOunit.switch_xy = not self.AOunit.switch_xy
-            self.Log('switch_xy = {:.2f}'.format(self.AOunit.switch_xy))
+            self.Log('switch_xy = {}'.format(self.AOunit.switch_xy))
 
     def toggle_reverse_x(self):
         if self.AOunit is not None:
             self.AOunit.reverse_x = not self.AOunit.reverse_x
-            self.Log('reverse_x = {:.2f}'.format(self.AOunit.reverse_x))
+            self.Log('reverse_x = {}'.format(self.AOunit.reverse_x))
 
     def toggle_reverse_y(self):
         if self.AOunit is not None:
             self.AOunit.reverse_y = not self.AOunit.reverse_y
-            self.Log('reverse_y = {:.2f}'.format(self.AOunit.reverse_y))
+            self.Log('reverse_y = {}'.format(self.AOunit.reverse_y))
 
     def adjust_steps_per_pixel(self, factor):
         if self.AOunit is not None:
@@ -247,22 +263,22 @@ class AOThread(threading.Thread):
     def toggle_mount_switch_xy(self):
         if self.AOunit is not None:
             self.AOunit.mount_switch_xy = not self.AOunit.mount_switch_xy
-            self.Log('mount_switch_xy = {:.2f}'.format(self.AOunit.mount_switch_xy))
+            self.Log('mount_switch_xy = {}'.format(self.AOunit.mount_switch_xy))
 
     def toggle_mount_reverse_x(self):
         if self.AOunit is not None:
             self.AOunit.mount_reverse_x = not self.AOunit.mount_reverse_x
-            self.Log('mount_reverse_x = {:.2f}'.format(self.AOunit.mount_reverse_x))
+            self.Log('mount_reverse_x = {}'.format(self.AOunit.mount_reverse_x))
 
     def toggle_mount_reverse_y(self):
         if self.AOunit is not None:
             self.AOunit.mount_reverse_y = not self.AOunit.mount_reverse_y
-            self.Log('mount_reverse_y = {:.2f}'.format(self.AOunit.mount_reverse_y))
+            self.Log('mount_reverse_y = {}'.format(self.AOunit.mount_reverse_y))
 
     def adjust_mount_steps_per_pixel(self, factor):
         if self.AOunit is not None:
             self.AOunit.mount_steps_per_pixel /= factor
-            self.Log('mount_steps_per_pixel = {:.2f}'.format(self.AOunit.mount_steps_per_pixel))
+            self.Log('mount_steps_per_pixel = {}'.format(self.AOunit.mount_steps_per_pixel))
         
 
 # ------------------------------------------------------------------------------
@@ -292,6 +308,7 @@ class Guider(wx.Frame):
         # then just hide the frame, otherwise close it completely
         if self.parent is None:
             self.Destroy()
+            self.panel.stop_camera.set()
         else:
             self.parent.panel.ToggleGuider(e)
 
@@ -311,7 +328,6 @@ class GuiderPanel(wx.Panel):
         self.guide_box_size = 25  # pixels
         self.min_guide_correction = 0.1  # pixels
         # config end
-        self.camera_on = False
         self.guiding_on = False
         # These positions are stored in numpy image pixel coordinates,
         # so zero-indexed and on the native image scale
@@ -321,7 +337,8 @@ class GuiderPanel(wx.Panel):
         self.imagecount = None
         self.AOtrained = False
         self.InitPanel()
-        self.InitAO()
+        wx.CallLater(50, self.InitAO)
+        wx.CallLater(100, self.InitCamera)
 
     def InitPanel(self):
         MainBox = wx.BoxSizer(wx.VERTICAL)        
@@ -351,6 +368,7 @@ class GuiderPanel(wx.Panel):
         self.ToggleCameraButton.Bind(wx.EVT_BUTTON, self.ToggleCamera)
         self.ToggleCameraButton.SetToolTip(wx.ToolTip(
             'Start/stop taking guider images'))
+        self.ToggleCameraButton.Disable()
         box.Add(self.ToggleCameraButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
                 border=10)
         box.Add((20, 10))
@@ -384,7 +402,7 @@ class GuiderPanel(wx.Panel):
         box.Add(self.logger, 1, flag=wx.ALIGN_CENTER_VERTICAL|wx.EXPAND)
 
     def ToggleCamera(self, e):
-        if self.camera_on:
+        if self.camera_on.is_set():
             self.StopCamera()
             self.ToggleCameraButton.SetLabel('Start Camera')
             self.TrainGuidingButton.Disable()
@@ -411,14 +429,22 @@ class GuiderPanel(wx.Panel):
             
     def StartCamera(self):
         exptime = self.GetExpTime()
-        self.camera_on = True
-        self.stop_camera = threading.Event()
-        self.ImageTaker = TakeImageThread(self, self.stop_camera, exptime)
-        self.ImageTaker.start()
+        self.ImageTaker.SetExpTime(exptime)
+        self.camera_on.set()
 
     def StopCamera(self):
-        self.stop_camera.set()
-        self.camera_on = False
+        self.camera_on.clear()
+
+    def InitCamera(self):
+        exptime = self.GetExpTime()
+        self.stop_camera = threading.Event()
+        self.camera_on = threading.Event()
+        self.ImageTaker = TakeImageThread(self, self.stop_camera,
+                                          self.camera_on, exptime)
+        self.ImageTaker.start()
+        while not self.camera_on.wait(0.1):
+            wx.Yield()
+        self.ToggleCameraButton.Enable()
 
     def InitAO(self):
         self.StartGuiding()
@@ -440,6 +466,8 @@ class GuiderPanel(wx.Panel):
         self.StartGuiding()
         self.Log('Training AO')
         # Train AO unit
+        # NEED TO WATCH OUT FOR CASE WHERE WE LOSE GUIDE STAR!
+        # COMMENTED OUT ADJUST_STEPS FOR NOW!
         for delta in [0.3, 1.0, 3.0]:
             dpix = self.guide_box_size * delta
             movebox = delta>0.5
@@ -449,7 +477,7 @@ class GuiderPanel(wx.Panel):
                 self.AO.toggle_switch_xy()
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
-            self.AO.adjust_steps_per_pixel(factor)
+            #self.AO.adjust_steps_per_pixel(factor)
             # check x and y directions
             dx, dy = self.AObracket(dpix, dpix, movebox)
             if dx < 0:
@@ -466,7 +494,7 @@ class GuiderPanel(wx.Panel):
                 self.AO.toggle_mount_switch_xy()
                 dx, dy = dy, dx
             factor = abs(dx) / dpix
-            self.AO.adjust_mount_steps_per_pixel(factor)
+            #self.AO.adjust_mount_steps_per_pixel(factor)
             # check x and y direction
             dx, dy = self.AObracket(0, dpix, movebox, mount=True)
             if dx < 0:
@@ -569,7 +597,7 @@ class GuiderPanel(wx.Panel):
                 self.guide_box_position.x += int(round(dx))
                 self.guide_box_position.y += int(round(dy))
                 self.CentroidBox()
-            if self.camera_on:
+            if self.camera_on.is_set():
                 self.TrainGuidingButton.Enable()
                 if self.AOtrained:
                     self.ToggleGuidingButton.Enable()
