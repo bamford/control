@@ -468,7 +468,7 @@ class GuiderPanel(wx.Panel):
         # Train AO unit
         # NEED TO WATCH OUT FOR CASE WHERE WE LOSE GUIDE STAR!
         # COMMENTED OUT ADJUST_STEPS FOR NOW!
-        for delta in [0.3, 1.0, 3.0]:
+        for delta in [0.3, 0.6]:
             dpix = self.guide_box_size * delta
             movebox = delta>0.5
             # check x versus y and get step factor
@@ -485,7 +485,7 @@ class GuiderPanel(wx.Panel):
             if dy < 0:
                 self.AO.toggle_reverse_y()
         # Train AO mount
-        for delta in [0.3, 1.0, 3.0]:
+        for delta in [0.3, 0.6]:
             dpix = self.guide_box_size * delta
             movebox = delta>0.5
             # check x versus y and get step factor
@@ -512,6 +512,8 @@ class GuiderPanel(wx.Panel):
         else:
             command = 'G'
         self.AOcorrections.put((command, -dpix, 0.0))
+        if movebox:
+             pass # NEED TO IMPLEMENT THIS           
         wx.Yield()
         time.sleep(0.5)
         self.WaitForNextImage()
@@ -529,7 +531,7 @@ class GuiderPanel(wx.Panel):
     def WaitForNextImage(self):
         t = self.image_time
         for i in range(100):  # max 10 sec
-            wx.Yield()
+            #wx.Yield()
             if t != self.image_time or t is None:
                 break
             time.sleep(0.1)

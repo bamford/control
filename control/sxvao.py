@@ -59,6 +59,7 @@ class SXVAO():
             n = ny%self.max_steps
             self.MakeSteps(dir, n)
             ny -= n
+        return True
 
     def MakeMountCorrection(self, dx, dy):
         if self.mount_reverse_x:
@@ -73,9 +74,13 @@ class SXVAO():
         ny = self.DeltaToMountSteps(dy)
         dir = 'N' if dy > 0 else 'S'
         self.MakeMountSteps(dir, ny)
+        return True
 
     def DeltaToSteps(self, d):
         return int(round(abs(d)/self.steps_per_pixel))
+
+    def DeltaToMountSteps(self, d):
+        return int(round(abs(d)/self.mount_steps_per_pixel))
 
     def MakeSteps(self, dir, n=1):
         # dir must be one of [N, S, T, W]
@@ -108,13 +113,13 @@ class SXVAO():
         else:
             self.parent.Log('Mount stepping failed')
         
-    def RecentreMountIfNeeded(self):
+    def RecentreMountIfNeeded(self, force=False):
         # Move to approximately recentre AO with
         # opposing move for scope to keep image stationary
         # North-South
         mount_steps_N = (self.count_steps_N * self.mount_steps_per_pixel
                          / self.steps_per_pixel)
-        if self.count_steps_N > self.steps_limit:
+        if self.count_steps_N > self.steps_limit or force:
             self.MakeSteps('S', abs(self.count_steps_N))
             self.MakeMountSteps('N', abs(mount_steps_N))
             self.count_steps_N = 0
@@ -125,7 +130,7 @@ class SXVAO():
         # West-East
         mount_steps_W = (self.count_steps_W * self.mount_steps_per_pixel
                          / self.steps_per_pixel)
-        if self.count_steps_W > self.steps_limit:
+        if self.count_steps_W > self.steps_limit or force:
             self.MakeSteps('T', abs(self.count_steps_W))
             self.MakeMountSteps('W', abs(mount_steps_W))
             self.count_steps_W = 0
