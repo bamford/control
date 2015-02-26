@@ -18,7 +18,7 @@ import scipy.stats
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
-import pyds9  # requires version from https://github.com/bamford/pyds9
+from astropy.vo.samp import SAMPIntegratedClient
 import urlparse
 if debug:
     import traceback
@@ -82,6 +82,7 @@ class ControlPanel(wx.Panel):
         self.flat = None
         # initialisations
         self.InitPanel()
+        self.InitSAMP()
         self.InitDS9()
         self.InitTelescope()
         self.InitCamera()
@@ -128,19 +129,27 @@ class ControlPanel(wx.Panel):
             else:
                 self.Log("Unable to connect to camera")
         
-    def InitDS9(self):
-        self.Log('Attempting to set up DS9')
+    def InitSAMP(self):
+        self.Log('Attempting to connect to SAMP hub')
         try:
-            self.ds9 = pyds9.DS9('control_display')
-        except:
-            self.Log('Could not set up DS9')
-            self.ds9 = None
-        if self.ds9 is not None:
-            self.ds9.set('frame delete all')
-            self.ds9.set('tile')
-            self.ds9.set('frame new')
-            self.ds9.set('frame new rgb')
-            self.ds9.set('rgb close')
+            self.samp_client = SAMPIntegratedClient()
+            self.samp_client.connect()
+        except Exception as detail:
+            self.samp_client = None
+            self.Log('Connection to SAMP hub failed:\n{}'.format(detail))
+        else:
+            self.Log('Connected to SAMP hub')
+
+    def InitDS9(self):
+        if self.samp_client is not None:
+            self.Log('Attempting to set up DS9')
+            self.DS9Command('frame delete all')
+            self.DS9Command('tile')
+            self.DS9Command('frame new')
+            self.DS9Command('frame new rgb')
+            self.DS9Command('rgb close')
+        else:
+            self.Log('No connection to DS9')
 
     def InitPaths(self):
         night = datetime.utcnow() - timedelta(hours=12)
@@ -357,6 +366,9 @@ class ControlPanel(wx.Panel):
 
     def OnQuit(self, e):
         self.UpdateInfoTimer.Stop()
+        if self.samp_client is not None:
+            self.Log('Disconnecting from SAMP hub')
+            self.samp_client.disconnect()
         try:
             self.tel.Connected = False
             # Only in a thread:
@@ -369,7 +381,7 @@ class ControlPanel(wx.Panel):
             # win32com.client.pythoncom.CoUninitialize() # cam
         except:
             pass
-        
+            
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
             button.Enable()
@@ -411,7 +423,7 @@ class ControlPanel(wx.Panel):
             return True
         else:
             return False
-
+    
     def TakeBias(self, e):
         # Popup to check cover on?
         nbias = self.GetNumExp()
@@ -702,15 +714,17 @@ class ControlPanel(wx.Panel):
         self.filters = None  # do not use filters until debayered
 
     def DisplayImage(self):
-        # adapted from pyds9.set_np2arr
-        if self.ds9 is not None:
-            self.ds9.set('frame 1')
-            self.ds9.set_np2arr(self.image)
+        if self.samp_client is not None:
+            self.DS9LoadImage(self.images_path, self.filename, frame=1)
         
     def DisplayRGBImage(self):
-        if self.ds9 is not None:
-            self.ds9.set('frame 2')
-            self.ds9.set_np2arr(self.filters, rgb=True)
+        if self.samp_client is not None:
+            self.DS9SelectFrame(2)
+            for f in ('red', 'green', 'blue'):
+                # Could this be all done in one SAMP command?
+                self.DS9Command('rgb {}'.format(f))
+                self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
+            self.DS9Command('rgb close')
 
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
@@ -772,7 +786,26 @@ class ControlPanel(wx.Panel):
             self.main.guider.Show()
             self.GuiderButton.SetLabel('Hide Guider')
 
+    def DS9Command(self, cmd, url=None, params=None):
+        if params is None:
+            params = {'cmd': cmd}
+        else:
+            params['cmd'] = cmd
+        if url is not None:
+            params['url'] = url
+        message = {'samp.mtype': 'ds9.set', 'samp.params': params}
+        self.samp_client.notify_all(message)
 
+    def DS9SelectFrame(self, frame):
+        self.DS9Command('frame {}'.format(frame))
+
+    def DS9LoadImage(self, path, filename, frame=None):
+        if frame is not None:
+            self.DS9SelectFrame(frame)
+        url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
+        url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
+        self.DS9Command('fits', params={'url': url, 'name': filename})
+        
 class ControlError(Exception):
     def __init__(self, expr=None, msg=None):
         if debug:
