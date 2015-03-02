@@ -4,7 +4,7 @@
 # control.py
 
 # simulate obtaining images for testing
-simulate = True
+simulate = False
 debug = True
 
 import wx
@@ -14,7 +14,7 @@ import os.path
 from glob import glob
 import StringIO
 import numpy as np
-import scipy.stats
+from scipy.stats import norm
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
@@ -25,6 +25,7 @@ if debug:
 if not simulate:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
     import win32com.client
+    import pythoncom
 
 from guider import Guider
 
@@ -98,12 +99,16 @@ class ControlPanel(wx.Panel):
             self.tel = None
         if self.tel is not None:
             if not self.tel.Connected:
-                self.tel.Connected = True
+                try: 
+                    self.tel.Connected = True
+                except pythoncom.com_error as error:
+                    pass
             if self.tel.Connected:
                 self.Log("Connected to telescope")
             else:
                 self.Log("Unable to connect to telescope")
                 self.tel = None
+        if self.tel is not None:
             self.Log("Telescope time is {}".format(self.tel.UTCDate))
             if not self.tel.Tracking:
                 self.tel.Tracking = True
@@ -137,6 +142,8 @@ class ControlPanel(wx.Panel):
         except Exception as detail:
             self.samp_client = None
             self.Log('Connection to SAMP hub failed:\n{}'.format(detail))
+            #TODO print more useful advice
+            #TODO periodically call InitSAMP
         else:
             self.Log('Connected to SAMP hub')
 
@@ -315,7 +322,8 @@ class ControlPanel(wx.Panel):
 
     def UpdateInfo(self, event):
         self.UpdateTime()
-        self.UpdatePosition()
+        #TODO fix this
+        #self.UpdatePosition()
         
     def UpdateTime(self):
         now = datetime.utcnow()
@@ -328,8 +336,9 @@ class ControlPanel(wx.Panel):
 
     def UpdatePosition(self):
         if self.tel is not None:
-            c = ICRSCoordinates(self.tel.RightAscension, self.tel.Declination,
-                                unit=(u.hour, u.degree))
+            c = coord.SkyCoord(ra=self.tel.RightAscension,
+                               dec=self.tel.Declination,
+                               unit=(u.hour, u.degree), frame='icrs')
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
             dec = c.ra.to_string(u.degree, precision=1, pad=True, alwayssign=True)
             self.tel_ra.SetLabel('Tel. RA:  ' + ra)
@@ -700,7 +709,7 @@ class ControlPanel(wx.Panel):
                 self.image *= np.arange(shape[1])/(2.0*shape[0]) + 0.75
             else:
                 size = 23
-                g = scipy.stats.norm.pdf(np.arange(size), (size-1)/2.0, 4.0)
+                g = norm.pdf(np.arange(size), (size-1)/2.0, 4.0)
                 star = np.dot(g[:, None], g[None, :])
                 self.image = np.zeros(shape)
                 for i in range(100):

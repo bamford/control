@@ -388,14 +388,38 @@ class GuiderPanel(wx.Panel):
         self.TrainGuidingButton.SetToolTip(wx.ToolTip(
             'Automatically train guiding system'))
         self.TrainGuidingButton.Disable()
-        box.Add(self.TrainGuidingButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+        box.Add(self.TrainGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
                 border=10)
         self.ToggleGuidingButton = wx.Button(panel, label='Start Guiding')
         self.ToggleGuidingButton.Bind(wx.EVT_BUTTON, self.ToggleGuiding)
         self.ToggleGuidingButton.SetToolTip(wx.ToolTip(
             'Start/stop guiding images'))
         self.ToggleGuidingButton.Disable()
-        box.Add(self.ToggleGuidingButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+        box.Add(self.ToggleGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+                border=10)
+        self.MoveAOLButton = wx.Button(panel, label='L')
+        self.MoveAOLButton.Bind(wx.EVT_BUTTON, self.MoveAOLeft)
+        self.MoveAOLButton.SetToolTip(wx.ToolTip(
+            'Move stars left'))
+        box.Add(self.MoveAOLButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
+                border=10)
+        self.MoveAORButton = wx.Button(panel, label='R')
+        self.MoveAORButton.Bind(wx.EVT_BUTTON, self.MoveAORight)
+        self.MoveAORButton.SetToolTip(wx.ToolTip(
+            'Move stars right'))
+        box.Add(self.MoveAORButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
+                border=10)
+        self.MoveAOUButton = wx.Button(panel, label='U')
+        self.MoveAOUButton.Bind(wx.EVT_BUTTON, self.MoveAOUp)
+        self.MoveAOUButton.SetToolTip(wx.ToolTip(
+            'Move stars up'))
+        box.Add(self.MoveAOUButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
+                border=10)
+        self.MoveAODButton = wx.Button(panel, label='D')
+        self.MoveAODButton.Bind(wx.EVT_BUTTON, self.MoveAODown)
+        self.MoveAODButton.SetToolTip(wx.ToolTip(
+            'Move stars down'))
+        box.Add(self.MoveAODButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
                 border=10)
         self.logger = wx.TextCtrl(panel, size=(300,90),
                         style=wx.TE_MULTILINE|wx.TE_READONLY)
@@ -460,6 +484,18 @@ class GuiderPanel(wx.Panel):
     def StopGuiding(self):
         self.guiding_on = False
         self.AOcorrections.put('Q')
+
+    def MoveAOLeft(self, e):
+        self.AOcorrections.put(('G', -50.0, 0.0))
+
+    def MoveAORight(self, e):
+        self.AOcorrections.put(('G', 50.0, 0.0))
+
+    def MoveAOUp(self, e):
+        self.AOcorrections.put(('G', 0.0, 50.0))
+
+    def MoveAODown(self, e):
+        self.AOcorrections.put(('G', 0.0, 50.0))
 
     def TrainGuiding(self, e):
         self.ToggleCameraButton.Disable()
