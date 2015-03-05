@@ -28,6 +28,9 @@ if not simulate:
     import pythoncom
 
 from guider import Guider
+from camera import TakeMainImageThread, EVT_IMAGEREADY
+from ao import AOThread
+from logevent import EVT_LOG
 
 class Control(wx.Frame):
 
@@ -37,6 +40,8 @@ class Control(wx.Frame):
         self.__DoLayout()
         self.Log = self.panel.Log
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
+        self.Bind(EVT_LOG, self.panel.OnLog)
+        self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
         self.Show(True)
         self.guider = Guider(self)
         self.guider.Hide()
@@ -90,6 +95,12 @@ class ControlPanel(wx.Panel):
         self.InitPaths()
         self.LoadCalibrations()
 
+    def InitCamera(self):
+        self.stop_camera = threading.Event()
+        self.take_image = threading.Event()
+        self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
+                                              self.camera_on, 0.0)
+        
     def InitTelescope(self):
         if not simulate:
             # Only in a thread:
@@ -116,23 +127,6 @@ class ControlPanel(wx.Panel):
                 self.Log("Telescope tracking")
             else:
                 self.Log("Unable to start telescope tracking")
-
-    def InitCamera(self):
-        if not simulate:
-            # Only in a thread:
-            # win32com.client.pythoncom.CoInitialize()
-            self.cam = win32com.client.Dispatch("ASCOM.SXMain0.Camera")
-        else:
-            self.cam = None
-        if self.cam is not None:
-            if not self.cam.Connected:
-                self.cam.Connected = True
-            if self.cam.Connected:
-                self.cam.StartExposure(0, True) # discard first image
-                # wait for camera to cool?
-                self.Log("Connected to camera")
-            else:
-                self.Log("Unable to connect to camera")
         
     def InitSAMP(self):
         self.Log('Attempting to connect to SAMP hub')
@@ -142,12 +136,13 @@ class ControlPanel(wx.Panel):
         except Exception as detail:
             self.samp_client = None
             self.Log('Connection to SAMP hub failed:\n{}'.format(detail))
-            #TODO print more useful advice
-            #TODO periodically call InitSAMP
+            self.Log('Are TOPCAT and DS9 open? Is DS9 connected to SAMP?')
         else:
             self.Log('Connected to SAMP hub')
 
     def InitDS9(self):
+        if self.samp_client is None:
+            self.InitSAMP()
         if self.samp_client is not None:
             self.Log('Attempting to set up DS9')
             self.DS9Command('frame delete all')
@@ -373,6 +368,9 @@ class ControlPanel(wx.Panel):
         time.sleep(0.01)
         self.logger.Refresh()
 
+    def OnLog(self, event):
+        self.Log(event.text)
+        
     def OnQuit(self, e):
         self.UpdateInfoTimer.Stop()
         if self.samp_client is not None:
@@ -429,11 +427,41 @@ class ControlPanel(wx.Panel):
             self.AbortButton.Disable()
             self.Log('Trying to abort...')
             self.need_abort = True
+            self.take_image.clear()  # stop current exposure
+            self.worker.next()
             return True
         else:
             return False
+
+    def OnImageReady(self, event):
+        # The way images are obtained is a bit clever/complicated...
+        # Clicking a "Take XXXX" button runs the corresponding TakeXXXX
+        # method, which (via TakeWorker) runs TakeXXXXWorker to create a
+        # generator, which is assigned to an instance variable, self.worker.
+        # TakeWorker then calls next() on this generator, which starts an 
+        # exposure via the ImageTaker thread, then yields. TakeWorker then
+        # completes, returning control to the WX panel.
+        # When the exposure is done and the new image is ready, an
+        # ImageReadyEvent is posted, running OnImageReady.
+        # This transfers the image and its time to instance variables, then
+        # cals next() on self.worker to continue from where it left off.
+        # If an abort is issued, then the current exposure is stopped,
+        # self.worker.next() is called and the worker handles the abort.
+        if self.worker is not None:
+            self.image = event.image
+            self.image_time = event.image_time
+            self.worker.next()
+            self.worker = None
+        
+    def TakeWorker(self, worker):
+        if not self.working:
+            self.worker = worker()
+            worker.next()
     
     def TakeBias(self, e):
+        self.TakeWorker(self.TakeBiasWorker)
+        
+    def TakeBiasWorker(self):
         # Popup to check cover on?
         nbias = self.GetNumExp()
         if nbias is None or nbias < self.min_nbias:
@@ -445,6 +473,7 @@ class ControlPanel(wx.Panel):
                     self.Log('Starting bias {:d}'.format(i+1))
                     self.CheckForAbort()
                     self.TakeImage(exptime=0)
+                    yield
                     self.Log('Taken bias {:d}'.format(i+1))
                     self.CheckForAbort()
                     self.SaveImage('bias')
@@ -470,6 +499,9 @@ class ControlPanel(wx.Panel):
             self.StopWorking()
 
     def TakeFlat(self, e):
+        self.TakeWorker(self.TakeFlatWorker)
+
+    def TakeFlatWorker(self):
         # Popup to check ready?
         nflat = self.GetNumExp()
         if nflat is None or nflat < self.min_nflat:
@@ -478,8 +510,11 @@ class ControlPanel(wx.Panel):
             self.Log('### Taking {:d} flat images...'.format(nflat))
             try:
                 exptime = self.GetExpTime()
-                exptime = self.GetFlatExpTime(exptime)
+                GetFlatExpTime = self.GetFlatExpTime(exptime)
+                exptime = GetFlatExpTime.next()
                 if exptime is None:
+                    yield
+                if exptime < 0:
                     self.Log('Flat images not obtained')
                 else:
                     self.Log('Using exptime of {:.3f} sec'.format(exptime))
@@ -487,6 +522,7 @@ class ControlPanel(wx.Panel):
                         self.Log('Starting flat {:d}'.format(i+1))
                         self.CheckForAbort()
                         self.TakeImage(exptime)
+                        yield
                         self.Log('Taken flat {:d}'.format(i+1))
                         self.CheckForAbort()
                         self.SaveImage('flat')
@@ -518,6 +554,9 @@ class ControlPanel(wx.Panel):
             self.StopWorking()
 
     def TakeScience(self, e):
+        self.TakeWorker(self.TakeScienceWorker)
+
+    def TakeScienceWorker(self):
         nexp = self.GetNumExp()
         exptime = self.GetExpTime()
         if nexp is None or exptime is None:
@@ -530,6 +569,7 @@ class ControlPanel(wx.Panel):
                     self.Log('Starting exposure {:d}'.format(i+1))
                     self.CheckForAbort()
                     self.TakeImage(exptime)
+                    yield
                     self.Log('Taken exposure {:d}'.format(i+1))
                     self.SaveImage()
                     self.Reduce()
@@ -545,6 +585,9 @@ class ControlPanel(wx.Panel):
             self.StopWorking()
 
     def TakeContinuous(self, e):
+        self.TakeWorker(self.TakeContinuousWorker)
+
+    def TakeContinuousWorker(self):
         exptime = self.GetExpTime()
         if self.StartWorking():
             self.Log('### Taking continuous images...')
@@ -553,6 +596,7 @@ class ControlPanel(wx.Panel):
                 for i in range(self.max_ncontinuous):
                     self.CheckForAbort()
                     self.TakeImage(exptime)
+                    yield
                     self.SaveImage(name='continuous')
                     self.Reduce()
                     self.SaveRGBImages(name='continuous')
@@ -566,6 +610,9 @@ class ControlPanel(wx.Panel):
             self.StopWorking()
 
     def TakeAcquisition(self, e):
+        self.TakeWorker(self.TakeAcquisitionWorker)
+
+    def TakeAcquisitionWorker(self):
         exptime = self.GetExpTime()
         if self.StartWorking():
             self.Log('### Taking single acquisition image...')
@@ -573,6 +620,7 @@ class ControlPanel(wx.Panel):
                 self.Log('Using exptime of {:.3f} sec'.format(exptime))
                 self.CheckForAbort()
                 self.TakeImage(exptime)
+                yield
                 self.Log('Acquisition exposure taken')
                 self.SaveImage('acq')
                 self.Reduce()
@@ -654,10 +702,10 @@ class ControlPanel(wx.Panel):
             self.tel.SlewToTarget()
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
-            
+                        
     def GetFlatExpTime(self, start_exptime=None,
-                        min_exptime=0.001, max_exptime=60.0,
-                        min_counts=25000.0, max_counts=35000.0):
+                       min_exptime=0.001, max_exptime=60.0,
+                       min_counts=25000.0, max_counts=35000.0):
         target_counts = (min_counts + max_counts)/2.0
         if start_exptime is None:
             start_exptime = self.default_exptime
@@ -667,6 +715,7 @@ class ControlPanel(wx.Panel):
                      '{:.3f} sec'.format(exptime))
             self.CheckForAbort()
             self.TakeImage(exptime)
+            yield
             self.CheckForAbort()
             self.BiasSubtract()
             med_counts = np.median(self.image)
@@ -679,54 +728,30 @@ class ControlPanel(wx.Panel):
             if exptime > max_exptime:
                 self.Log('Required exposure time '
                          'longer than {:.3f} sec'.format(max_exptime))
-                exptime = None
+                exptime = -1
                 break
             if exptime < min_exptime:
                 self.Log('Required exposure time '
                          'shorter than {:.3f} sec'.format(min_exptime))
-                exptime = None
+                exptime = -1
                 break
         return exptime
 
     def TakeImage(self, exptime):
-        self.image_time = datetime.utcnow()
-        if self.cam is not None:
-            self.cam.StartExposure(exptime, True)
-            time.sleep(exptime)
-            time.sleep(self.readout_time)
-            while not self.cam.ImageReady:
-                self.CheckForAbort()
-                time.sleep(1)
-            self.image = np.array(self.cam.ImageArray)
-        else:
-            self.Log('NOT taking exposure of {:.3f} sec'.format(exptime))
-            time.sleep(0.1)
-            shape = (2024, 3040)
-            if self.bias is None:
-                self.image = np.zeros(shape)
-            elif self.flat is None:
-                self.image = np.random.poisson(10000 * exptime, size=shape)
-                self.image *= np.arange(shape[1])/(2.0*shape[0]) + 0.75
-            else:
-                size = 23
-                g = norm.pdf(np.arange(size), (size-1)/2.0, 4.0)
-                star = np.dot(g[:, None], g[None, :])
-                self.image = np.zeros(shape)
-                for i in range(100):
-                    x = np.random.choice(self.image.shape[0]-size)
-                    y = np.random.choice(self.image.shape[1]-size)
-                    flux = np.random.poisson(100) * 500
-                    self.image[x:x+size,y:y+size] += star * flux
-                self.image *= np.arange(shape[1])/(2.0*shape[0]) + 0.75 
-                self.image = np.random.poisson(self.image)
-            self.image += np.random.normal(800, 20, size=shape)
-        self.filters = None  # do not use filters until debayered
+        self.image = None
+        self.filters = None
+        self.ImageTaker.SetExpTime(exptime)
+        self.take_image.set()
 
     def DisplayImage(self):
+        if self.samp_client is None:
+            self.InitSAMP()
         if self.samp_client is not None:
             self.DS9LoadImage(self.images_path, self.filename, frame=1)
         
     def DisplayRGBImage(self):
+        if self.samp_client is None:
+            self.InitSAMP()
         if self.samp_client is not None:
             self.DS9SelectFrame(2)
             for f in ('red', 'green', 'blue'):
@@ -804,6 +829,7 @@ class ControlPanel(wx.Panel):
             params['url'] = url
         message = {'samp.mtype': 'ds9.set', 'samp.params': params}
         self.samp_client.notify_all(message)
+        #TODO: need to survive and warn if SAMP Hub and/or DS9 have been closed
 
     def DS9SelectFrame(self, frame):
         self.DS9Command('frame {}'.format(frame))
