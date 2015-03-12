@@ -8,6 +8,7 @@ simulate = False
 debug = True
 
 import wx
+import threading
 from datetime import datetime, timedelta
 import time
 import os.path
@@ -99,7 +100,7 @@ class ControlPanel(wx.Panel):
         self.stop_camera = threading.Event()
         self.take_image = threading.Event()
         self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
-                                              self.camera_on, 0.0)
+                                              self.take_image, 0.0)
         
     def InitTelescope(self):
         if not simulate:
@@ -399,7 +400,7 @@ class ControlPanel(wx.Panel):
         
     def CheckForAbort(self):
         self.logger.Refresh()
-        wx.Yield()
+        #wx.Yield()
         if self.need_abort:
             raise ControlAbortError()
         
@@ -415,6 +416,7 @@ class ControlPanel(wx.Panel):
     def StopWorking(self):
         if self.working:
             self.working = False
+            self.worker = None
             self.AbortButton.Disable()
             self.EnableWorkButtons()
             wx.Bell()
@@ -428,7 +430,10 @@ class ControlPanel(wx.Panel):
             self.Log('Trying to abort...')
             self.need_abort = True
             self.take_image.clear()  # stop current exposure
-            self.worker.next()
+            try:
+                self.worker.next()
+            except StopIteration:
+                pass
             return True
         else:
             return False
@@ -450,13 +455,15 @@ class ControlPanel(wx.Panel):
         if self.worker is not None:
             self.image = event.image
             self.image_time = event.image_time
-            self.worker.next()
-            self.worker = None
+            try:
+                self.worker.next()
+            except StopIteration:
+                pass
         
     def TakeWorker(self, worker):
         if not self.working:
             self.worker = worker()
-            worker.next()
+            self.worker.next()
     
     def TakeBias(self, e):
         self.TakeWorker(self.TakeBiasWorker)
@@ -735,7 +742,7 @@ class ControlPanel(wx.Panel):
                          'shorter than {:.3f} sec'.format(min_exptime))
                 exptime = -1
                 break
-        return exptime
+        yield exptime
 
     def TakeImage(self, exptime):
         self.image = None

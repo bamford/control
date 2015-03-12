@@ -1,7 +1,18 @@
 import wx
 import threading
+import time
+from datetime import datetime
+import numpy as np
 
 from logevent import *
+
+# simulate obtaining images for testing
+simulate = False
+
+if not simulate:
+    # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
+    import win32com.client
+    import pythoncom
 
 # ------------------------------------------------------------------------------
 # Event to signal that a new image is ready for use
@@ -25,13 +36,13 @@ class TakeImageThread(threading.Thread):
         self.parent = parent
         self.stopevent = stopevent
         self.onevent = onevent
-        SetExpTime(exptime)
         self.continuous = False
         self.camera_id = "ASCOM.SXMain0.Camera"
         self.imshape = (2024, 3040)
         self.check_period = 1.0
         self.cam = None
         self.exptime_lock = threading.Lock()
+        self.SetExpTime(exptime)
 
     def run(self):
         self.InitCamera()
@@ -63,6 +74,7 @@ class TakeImageThread(threading.Thread):
             for i in range(3):
                 try:
                     self.cam.Connected = False
+                    time.sleep(1)
                     self.cam.Connected = True
                 except:
                     self.Log("Problem connecting to camera")
@@ -101,6 +113,8 @@ class TakeImageThread(threading.Thread):
         image = None
         image_time = datetime.utcnow()
         if self.cam is not None:
+            # TODO: check camera not already exposing, and if it is
+            # stop it before starting new exposure
             self.cam.StartExposure(exptime, True)
             while (not self.cam.ImageReady) and self.onevent.is_set():
                 time.sleep(self.check_period)
