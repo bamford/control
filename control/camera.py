@@ -62,7 +62,6 @@ class TakeImageThread(threading.Thread):
                         self.onevent.clear()
         finally:
             self.Disconnect()
-            self.Log('Stopped camera')
 
     def InitCamera(self):
         if not simulate:
