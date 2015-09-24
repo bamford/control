@@ -53,10 +53,14 @@ class Guider(wx.Frame):
         # When this frame is quit, if it was started by the Control frame,
         # then just hide the frame, otherwise close it completely
         if self.parent is None:
-            self.Destroy()
             self.panel.stop_camera.set()
+            self.Destroy()
         else:
             self.parent.panel.ToggleGuider(e)
+
+    def OnExit(self, e):
+        self.panel.stop_camera.set()
+        self.Destroy()
 
 
 # ------------------------------------------------------------------------------

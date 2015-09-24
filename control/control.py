@@ -68,9 +68,9 @@ class Control(wx.Frame):
 
     def OnQuit(self, e):
         self.panel.OnQuit(None)
-        self.guider.Destroy()
+        self.guider.OnExit(None)
         self.Destroy()
-
+        e.Skip()
 
 class ControlPanel(wx.Panel):
 
@@ -104,6 +104,9 @@ class ControlPanel(wx.Panel):
         self.take_image = threading.Event()
         self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
                                               self.take_image, 0.0)
+
+    def StopCamera(self):
+        self.stop_camera.set()
 
     def InitTelescope(self):
         if not simulate:
@@ -385,7 +388,10 @@ class ControlPanel(wx.Panel):
         self.Log(event.text)
 
     def OnQuit(self, e):
-        self.UpdateInfoTimer.Stop()
+        try:
+            self.StopCamera()
+        except:
+            pass
         if self.samp_client is not None:
             self.Log('Disconnecting from SAMP hub')
             self.samp_client.disconnect()
@@ -395,12 +401,7 @@ class ControlPanel(wx.Panel):
             # win32com.client.pythoncom.CoUninitialize() # tel
         except:
             pass
-        try:
-            self.stop_camera.set()
-        except:
-            pass
-        # wait for threads to finish
-        time.sleep(1)
+        self.UpdateInfoTimer.Stop()
 
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
@@ -864,6 +865,7 @@ class ControlPanel(wx.Panel):
         url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
         url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('fits', params={'url': url, 'name': filename})
+
 
 class ControlError(Exception):
     def __init__(self, expr=None, msg=None):
