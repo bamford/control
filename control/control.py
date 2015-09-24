@@ -479,7 +479,8 @@ class ControlPanel(wx.Panel):
             self.worker.next()
 
     def TakeBias(self, e):
-        self.TakeWorker(self.TakeBiasWorker)
+        if self.CheckReadyForBias():
+            self.TakeWorker(self.TakeBiasWorker)
 
     def TakeBiasWorker(self):
         # Popup to check cover on?
@@ -518,10 +519,10 @@ class ControlPanel(wx.Panel):
             self.StopWorking()
 
     def TakeFlat(self, e):
-        self.TakeWorker(self.TakeFlatWorker)
+        if self.CheckReadyForFlat():
+            self.TakeWorker(self.TakeFlatWorker)
 
     def TakeFlatWorker(self):
-        # Popup to check ready?
         nflat = self.GetNumExp()
         if nflat is None or nflat < self.min_nflat:
             nflat = self.min_nflat
@@ -572,6 +573,25 @@ class ControlPanel(wx.Panel):
             else:
                 self.Log('Flat images done')
             self.StopWorking()
+
+    def CheckReadyForFlat(self):
+        dial = wx.MessageDialog(None,
+                                'Telescope pointing at twilight sky '
+                                '/ illuminated dome?\n'
+                                'Cover off?\n',
+                                'Are you ready?',
+                                wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+        response = dial.ShowModal()
+        return response == wx.ID_OK
+
+    def CheckReadyForBias(self):
+        dial = wx.MessageDialog(None,
+                                'Cover on?\n'
+                                'Lights low?\n',
+                                'Are you ready?',
+                                wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+        response = dial.ShowModal()
+        return response == wx.ID_OK
 
     def TakeScience(self, e):
         self.TakeWorker(self.TakeScienceWorker)
