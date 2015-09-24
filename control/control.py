@@ -35,7 +35,6 @@ if not simulate:
 
 from guider import Guider
 from camera import TakeMainImageThread, EVT_IMAGEREADY
-from ao import AOThread
 from logevent import EVT_LOG
 
 class Control(wx.Frame):
