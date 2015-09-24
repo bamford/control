@@ -296,7 +296,10 @@ class GuiderPanel(wx.Panel):
             command = 'G'
         self.AOcorrections.put((command, -dpix, 0.0))
         if movebox:
-             pass # NEED TO IMPLEMENT THIS
+            # NEEDS TESTING
+            x = self.guide_box_position.x + dpix
+            y = self.guide_box_position.y
+            self.guide_box_position = wx.Point(x, y)
         wx.Yield()
         time.sleep(0.5)
         self.WaitForNextImage()
