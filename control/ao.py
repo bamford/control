@@ -1,8 +1,12 @@
 import wx
 import threading
+import time
 
 from sxvao import SXVAO
 from logevent import *
+
+# simulate obtaining images for testing
+simulate = False
 
 # ------------------------------------------------------------------------------
 # Class to run AO unit on a separate thread
