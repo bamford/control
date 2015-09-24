@@ -91,12 +91,12 @@ class ControlPanel(wx.Panel):
         self.bias = None
         self.flat = None
         # initialisations
+        self.InitPaths()
         self.InitPanel()
         self.InitSAMP()
         self.InitDS9()
         self.InitTelescope()
         self.InitCamera()
-        self.InitPaths()
         self.LoadCalibrations()
 
     def InitCamera(self):
@@ -167,7 +167,6 @@ class ControlPanel(wx.Panel):
                                                         self.night))
         if not os.path.exists(self.images_path):
             os.makedirs(self.images_path)
-        self.Log('Storing images in {}'.format(self.images_path))
 
     def LoadCalibrations(self):
         # look for existing masterbias and masterflat images
@@ -364,7 +363,14 @@ class ControlPanel(wx.Panel):
         box.Add(self.logger, 1, flag=wx.EXPAND)
         now = datetime.utcnow()
         timeStamp = now.strftime('%a %d %b %Y %H:%M:%S UT')
-        self.logger.AppendText("Log started {}\n".format(timeStamp))
+        text = "Log started {}\n".format(timeStamp)
+        text += 'Storing images in {}\n'.format(self.images_path)
+        self.logger.AppendText(text)
+        dateStamp = now.strftime('%Y-%m-%d')
+        self.logfilename = os.path.abspath(os.path.join(self.images_path,
+                                                    'log_' + dateStamp))
+        self.logfile = file(self.logfilename, 'a')
+        self.logfile.write(text)
 
     def Log(self, text):
         # Work out if we're at the end of the file
@@ -376,7 +382,9 @@ class ControlPanel(wx.Panel):
             self.logger.Freeze()
         now = datetime.utcnow()
         timeStamp = now.strftime('%H:%M:%S UT')
-        self.logger.AppendText("{} : {}\n".format(timeStamp, text))
+        text = "{} : {}\n".format(timeStamp, text)
+        self.logger.AppendText(text)
+        self.logfile.write(text)
         if self.holdingBack:
             self.logger.SetInsertionPoint(currentCaretPosition)
             self.logger.SetSelection(currentSelectionStart, currentSelectionEnd)
@@ -402,6 +410,7 @@ class ControlPanel(wx.Panel):
         except:
             pass
         self.UpdateInfoTimer.Stop()
+        self.logfile.close()
 
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
