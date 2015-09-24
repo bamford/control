@@ -90,6 +90,7 @@ class ControlPanel(wx.Panel):
         self.tel = None
         self.bias = None
         self.flat = None
+        self.samp_client = None
         # initialisations
         self.InitPaths()
         self.InitPanel()
@@ -136,20 +137,21 @@ class ControlPanel(wx.Panel):
                 self.Log("Unable to start telescope tracking")
 
     def InitSAMP(self):
-        self.Log('Attempting to connect to SAMP hub')
         try:
-            self.samp_client = SAMPIntegratedClient()
-            self.samp_client.connect()
+            if self.samp_client is None:
+                self.Log('Attempting to connect to SAMP hub')
+                self.samp_client = SAMPIntegratedClient()
+                self.samp_client.connect()
+                self.Log('Connected to SAMP hub')
+            else:
+                self.samp_client.ping()
         except Exception as detail:
             self.samp_client = None
             self.Log('Connection to SAMP hub failed:\n{}'.format(detail))
             self.Log('Are TOPCAT and DS9 open? Is DS9 connected to SAMP?')
-        else:
-            self.Log('Connected to SAMP hub')
 
     def InitDS9(self, e=None):
-        if self.samp_client is None:
-            self.InitSAMP()
+        self.InitSAMP()
         if self.samp_client is not None:
             self.Log('Attempting to set up DS9')
             self.DS9Command('frame delete all')
@@ -798,14 +800,12 @@ class ControlPanel(wx.Panel):
         self.take_image.set()
 
     def DisplayImage(self):
-        if self.samp_client is None:
-            self.InitSAMP()
+        self.InitSAMP()
         if self.samp_client is not None:
             self.DS9LoadImage(self.images_path, self.filename, frame=1)
 
     def DisplayRGBImage(self):
-        if self.samp_client is None:
-            self.InitSAMP()
+        self.InitSAMP()
         if self.samp_client is not None:
             self.DS9SelectFrame(2)
             for f in ('red', 'green', 'blue'):
@@ -882,8 +882,11 @@ class ControlPanel(wx.Panel):
         if url is not None:
             params['url'] = url
         message = {'samp.mtype': 'ds9.set', 'samp.params': params}
-        self.samp_client.notify_all(message)
-        #TODO: need to survive and warn if SAMP Hub and/or DS9 have been closed
+        if self.samp_client is not None:
+            try:
+                self.samp_client.notify_all(message)
+            except:
+                self.samp_client = None
 
     def DS9SelectFrame(self, frame):
         self.DS9Command('frame {}'.format(frame))
@@ -909,7 +912,7 @@ class ControlAbortError(ControlError):
 def excepthook(type, value, tb):
     message = 'Uncaught exception:\n'
     message += ''.join(traceback.format_exception(type, value, tb))
-    message += '\nSorry, somthing has gone wrong.\n'
+    message += '\nSorry, something has gone wrong.\n'
     message += 'Probably best to restart Control.'
     print(message)
 
