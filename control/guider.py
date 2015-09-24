@@ -18,7 +18,10 @@ import wx
 import threading
 import serial
 if not simulate:
-    import win32com.client
+    try:
+        import win32com.client
+    except ImportError:
+        simulate = True
 
 from camera import TakeGuiderImageThread, EVT_IMAGEREADY
 from ao import AOThread
@@ -27,7 +30,7 @@ from logevent import EVT_LOG
 # ------------------------------------------------------------------------------
 # The main Guider frame
 class Guider(wx.Frame):
-    
+
     def __init__(self, *args, **kwargs):
         wx.Frame.__init__(self, *args, title='Guider',
                           size=(600, 600), **kwargs)
@@ -39,7 +42,7 @@ class Guider(wx.Frame):
         self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
         if self.parent is None:
             self.Show(True)
-        
+
     def __DoLayout(self):
         self.panel = GuiderPanel(self)
         sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -55,7 +58,7 @@ class Guider(wx.Frame):
         else:
             self.parent.panel.ToggleGuider(e)
 
-        
+
 # ------------------------------------------------------------------------------
 # The main Guider panel
 class GuiderPanel(wx.Panel):
@@ -84,7 +87,7 @@ class GuiderPanel(wx.Panel):
         wx.CallLater(100, self.InitCamera)
 
     def InitPanel(self):
-        MainBox = wx.BoxSizer(wx.VERTICAL)        
+        MainBox = wx.BoxSizer(wx.VERTICAL)
         sb = wx.StaticBox(self)
         ImageBox = wx.StaticBoxSizer(sb, wx.HORIZONTAL)
         self.ImageDisplay = wx.StaticBitmap(self,
@@ -116,7 +119,7 @@ class GuiderPanel(wx.Panel):
                 border=10)
         box.Add((20, 10))
         box.Add(wx.StaticText(panel, label='Exp.Time'),
-                       flag=wx.ALIGN_CENTER_VERTICAL|wx.RIGHT, border=5)        
+                       flag=wx.ALIGN_CENTER_VERTICAL|wx.RIGHT, border=5)
         self.ExpTimeCtrl = wx.TextCtrl(panel, size=(50,-1),)
         self.ExpTimeCtrl.ChangeValue('{:.3f}'.format(self.default_exptime))
         self.ExpTimeCtrl.SetToolTip(wx.ToolTip(
@@ -193,7 +196,7 @@ class GuiderPanel(wx.Panel):
             self.guiding_on = True
             self.ToggleGuidingButton.SetLabel('Stop Guiding')
             self.ToggleCameraButton.Disable()
-            
+
     def StartCamera(self):
         exptime = self.GetExpTime()
         self.ImageTaker.SetExpTime(exptime)
@@ -214,7 +217,7 @@ class GuiderPanel(wx.Panel):
         self.StartGuiding()
         self.AOcorrections.put('K')
         self.StopGuiding()
-        
+
     def StartGuiding(self):
         self.AOcorrections = Queue()
         self.AO = AOThread(self, self.AOcorrections,
@@ -289,7 +292,7 @@ class GuiderPanel(wx.Panel):
             command = 'G'
         self.AOcorrections.put((command, -dpix, 0.0))
         if movebox:
-             pass # NEED TO IMPLEMENT THIS           
+             pass # NEED TO IMPLEMENT THIS
         wx.Yield()
         time.sleep(0.5)
         self.WaitForNextImage()
@@ -359,7 +362,7 @@ class GuiderPanel(wx.Panel):
         xc, yc = [int(round(c - size / 2.0)) for c in (x, y)]
         size = int(round(size))
         return xc, yc, size
-        
+
     def OnClickImage(self, event):
         if self.image is not None:
             wd, hd = self.ImageDisplay.Size
@@ -381,7 +384,7 @@ class GuiderPanel(wx.Panel):
                     self.ToggleGuidingButton.Enable()
             self.Log('Guide box centred at ({:d},{:d})'.format(
                 self.guide_box_position.x, self.guide_box_position.y))
-        
+
     def OnImageReady(self, event):
         self.image = event.image
         self.image_time = event.image_time
@@ -394,7 +397,7 @@ class GuiderPanel(wx.Panel):
         dx = dx if (abs(dx) > self.min_guide_correction) else 0.0
         dy = dy if (abs(dy) > self.min_guide_correction) else 0.0
         self.AOcorrections.put(('G', dx, dy))
-            
+
     def CentroidBox(self):
         xc, yc, size = self.GetRectCorner(self.guide_box_position.x,
                                           self.guide_box_position.y,
@@ -433,17 +436,17 @@ class GuiderPanel(wx.Panel):
 
     def Log(self, text):
         self.logger.AppendText("{}\n".format(text))
-        wx.CallAfter(self.logger.Refresh)        
+        wx.CallAfter(self.logger.Refresh)
 
     def OnLog(self, event):
         self.Log(event.text)
 
-        
+
 def main():
     app = wx.App(False)
     Guider(None)
     app.MainLoop()
 
-        
+
 if __name__ == '__main__':
     main()

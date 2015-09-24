@@ -3,6 +3,7 @@ import threading
 import time
 from datetime import datetime
 import numpy as np
+from scipy.stats import norm
 
 from logevent import *
 
@@ -11,8 +12,11 @@ simulate = False
 
 if not simulate:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
-    import win32com.client
-    import pythoncom
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        simulate = True
 
 # ------------------------------------------------------------------------------
 # Event to signal that a new image is ready for use
@@ -49,7 +53,7 @@ class TakeImageThread(threading.Thread):
         self.Log('Started camera')
         try:
             while not self.stopevent.is_set():
-                # only take images when camera is "on" and 
+                # only take images when camera is "on" and
                 # do not try to take images faster than one per second
                 if self.onevent.wait(1.0):
                     exptime = self.GetExpTime()
@@ -68,7 +72,7 @@ class TakeImageThread(threading.Thread):
             self.Log("Simulating camera")
             self.cam = None
         self.Connect()
-        
+
     def Connect(self):
         if self.cam is not None:
             for i in range(3):
@@ -97,7 +101,7 @@ class TakeImageThread(threading.Thread):
                 self.Log("Unable to disconnect from camera")
             self.cam = None
             win32com.client.pythoncom.CoUninitialize()
-            
+
     def SetExpTime(self, exptime):
         with self.exptime_lock:
             self.exptime = exptime
@@ -108,7 +112,7 @@ class TakeImageThread(threading.Thread):
 
     def Log(self, text):
         wx.PostEvent(self.parent, LogEvent(text=text))
-        
+
     def TakeImage(self, exptime):
         image = None
         image_time = datetime.utcnow()
@@ -123,7 +127,7 @@ class TakeImageThread(threading.Thread):
             else:
                 self.cam.StopExposure()
         else:
-            image = SimulateImage()
+            image = self.SimulateImage(exptime)
         #self.filters = None  # do not use filters until debayered
         if image is not None:
             wx.PostEvent(self.parent, ImageReadyEvent(image=image,

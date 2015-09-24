@@ -25,16 +25,19 @@ class SXVAO():
         self.ao = None
         self.count_steps_N = 0
         self.count_steps_W = 0
-    
+
     def Connect(self):
         if self.ao is None:
-            self.ao = serial.Serial(self.comport, timeout=10)
+            try:
+                self.ao = serial.Serial(self.comport, timeout=10)
+            except OSError:
+                return False
             self.ao.write('X')
             response = self.ao.read(1)
             return response == 'Y'
         else:
             return False
-        
+
     def Disconnect(self):
         if self.ao is not None:
             self.ao.close()
@@ -112,7 +115,7 @@ class SXVAO():
             self.parent.Log('Mount took {:d} steps {:s}'.format(n, dir))
         else:
             self.parent.Log('Mount stepping failed')
-        
+
     def RecentreMountIfNeeded(self, force=False):
         # Move to approximately recentre AO with
         # opposing move for scope to keep image stationary
@@ -143,5 +146,3 @@ class SXVAO():
         self.ao.write('K')
         response = self.ao.read(1)
         return response == 'K'
-
-    

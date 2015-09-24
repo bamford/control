@@ -3,10 +3,7 @@
 
 # control.py
 
-# simulate obtaining images for testing
-simulate = False
-debug = True
-
+from __future__ import print_function
 import wx
 import threading
 from datetime import datetime, timedelta
@@ -15,18 +12,26 @@ import os.path
 from glob import glob
 import StringIO
 import numpy as np
-from scipy.stats import norm
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
 from astropy.vo.samp import SAMPIntegratedClient
 import urlparse
-if debug:
-    import traceback
+import sys
+import traceback
+
+# simulate obtaining images for testing
+simulate = False
+debug = True
+
 if not simulate:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
-    import win32com.client
-    import pythoncom
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        print('Windows COM modules not found.  Falling back to simulate mode.')
+        simulate = True
 
 from guider import Guider
 from camera import TakeMainImageThread, EVT_IMAGEREADY
@@ -100,7 +105,7 @@ class ControlPanel(wx.Panel):
         self.take_image = threading.Event()
         self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
                                               self.take_image, 0.0)
-        
+
     def InitTelescope(self):
         if not simulate:
             # Only in a thread:
@@ -110,7 +115,7 @@ class ControlPanel(wx.Panel):
             self.tel = None
         if self.tel is not None:
             if not self.tel.Connected:
-                try: 
+                try:
                     self.tel.Connected = True
                 except pythoncom.com_error as error:
                     pass
@@ -127,7 +132,7 @@ class ControlPanel(wx.Panel):
                 self.Log("Telescope tracking")
             else:
                 self.Log("Unable to start telescope tracking")
-        
+
     def InitSAMP(self):
         self.Log('Attempting to connect to SAMP hub')
         try:
@@ -140,7 +145,7 @@ class ControlPanel(wx.Panel):
         else:
             self.Log('Connected to SAMP hub')
 
-    def InitDS9(self):
+    def InitDS9(self, e=None):
         if self.samp_client is None:
             self.InitSAMP()
         if self.samp_client is not None:
@@ -161,7 +166,7 @@ class ControlPanel(wx.Panel):
         if not os.path.exists(self.images_path):
             os.makedirs(self.images_path)
         self.Log('Storing images in {}'.format(self.images_path))
-        
+
     def LoadCalibrations(self):
         # look for existing masterbias and masterflat images
         mb = glob(os.path.join(self.images_path, '*masterbias.fits'))
@@ -176,9 +181,9 @@ class ControlPanel(wx.Panel):
             mf = mf[-1]
             self.flat = np.asarray(pyfits.getdata(mf))
             self.Log('Loaded masterflat: {}'.format(os.path.basename(mf)))
-            
+
     def InitPanel(self):
-        MainBox = wx.BoxSizer(wx.HORIZONTAL)        
+        MainBox = wx.BoxSizer(wx.HORIZONTAL)
         sb = wx.StaticBox(self)
         ButtonBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         self.InitButtons(self, ButtonBox)
@@ -232,7 +237,7 @@ class ControlPanel(wx.Panel):
         AcquisitionButton.SetToolTip(wx.ToolTip(
             'Take single image of specified exposure time'))
         box.Add(AcquisitionButton, flag=wx.EXPAND|wx.ALL, border=10)
-        
+
         ScienceButton = wx.Button(panel, label='Take science images')
         ScienceButton.Bind(wx.EVT_BUTTON, self.TakeScience)
         self.WorkButtons.append(ScienceButton)
@@ -241,7 +246,7 @@ class ControlPanel(wx.Panel):
         box.Add(ScienceButton, flag=wx.EXPAND|wx.ALL, border=10)
 
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
-        
+
         ContinuousButton = wx.Button(panel, label='Continuous images')
         ContinuousButton.Bind(wx.EVT_BUTTON, self.TakeContinuous)
         self.WorkButtons.append(ContinuousButton)
@@ -253,7 +258,7 @@ class ControlPanel(wx.Panel):
 
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Exp.Time'),
-                       flag=wx.RIGHT, border=5)        
+                       flag=wx.RIGHT, border=5)
         self.ExpTimeCtrl = wx.TextCtrl(panel, size=(50,-1),)
         self.ExpTimeCtrl.ChangeValue('{:.3f}'.format(self.default_exptime))
         self.ExpTimeCtrl.SetToolTip(wx.ToolTip(
@@ -266,7 +271,7 @@ class ControlPanel(wx.Panel):
 
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Num.Exp.'),
-                       flag=wx.RIGHT, border=5)        
+                       flag=wx.RIGHT, border=5)
         self.NumExpCtrl = wx.TextCtrl(panel, size=(50,-1),)
         self.NumExpCtrl.ChangeValue('{:d}'.format(self.default_numexp))
         self.NumExpCtrl.SetToolTip(wx.ToolTip(
@@ -275,10 +280,10 @@ class ControlPanel(wx.Panel):
             '{:d} for flats)'.format(self.min_nflat)))
         subBox.Add(self.NumExpCtrl)
         box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
-        
+
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
-        
+
         self.AbortButton = wx.Button(panel, label='Abort')
         self.AbortButton.Bind(wx.EVT_BUTTON, self.Abort)
         self.AbortButton.SetToolTip(wx.ToolTip(
@@ -286,14 +291,23 @@ class ControlPanel(wx.Panel):
         self.AbortButton.Disable()
         box.Add(self.AbortButton, flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
-        
+
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
-        
+
         self.GuiderButton = wx.Button(panel, label='Show Guider')
         self.GuiderButton.Bind(wx.EVT_BUTTON, self.ToggleGuider)
         self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
         box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
+
+        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+                border=10)
+
+        self.ResetDS9Button = wx.Button(panel, label='Reset DS9')
+        self.ResetDS9Button.Bind(wx.EVT_BUTTON, self.InitDS9)
+        self.ResetDS9Button.SetToolTip(wx.ToolTip('Reset image '
+                                                  'display software'))
+        box.Add(self.ResetDS9Button, flag=wx.EXPAND|wx.ALL, border=10)
 
     def InitInfo(self, panel, box):
         # Times
@@ -319,7 +333,7 @@ class ControlPanel(wx.Panel):
         self.UpdateTime()
         #TODO fix this
         #self.UpdatePosition()
-        
+
     def UpdateTime(self):
         now = datetime.utcnow()
         timeStamp = now.strftime('%H:%M:%S UT')
@@ -341,7 +355,7 @@ class ControlPanel(wx.Panel):
         else:
             self.tel_ra.SetLabel('Tel. RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
-            
+
     def InitLog(self, panel, box):
         self.logger = wx.TextCtrl(panel, size=(600,100),
                         style=wx.TE_MULTILINE | wx.TE_READONLY)
@@ -370,7 +384,7 @@ class ControlPanel(wx.Panel):
 
     def OnLog(self, event):
         self.Log(event.text)
-        
+
     def OnQuit(self, e):
         self.UpdateInfoTimer.Stop()
         if self.samp_client is not None:
@@ -386,7 +400,9 @@ class ControlPanel(wx.Panel):
             self.stop_camera.set()
         except:
             pass
-            
+        # wait for threads to finish
+        time.sleep(1)
+
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
             button.Enable()
@@ -394,13 +410,13 @@ class ControlPanel(wx.Panel):
     def DisableWorkButtons(self):
         for button in self.WorkButtons:
             button.Disable()
-        
+
     def CheckForAbort(self):
         self.logger.Refresh()
         #wx.Yield()
         if self.need_abort:
             raise ControlAbortError()
-        
+
     def StartWorking(self):
         if self.working:
             return False
@@ -440,13 +456,13 @@ class ControlPanel(wx.Panel):
         # Clicking a "Take XXXX" button runs the corresponding TakeXXXX
         # method, which (via TakeWorker) runs TakeXXXXWorker to create a
         # generator, which is assigned to an instance variable, self.worker.
-        # TakeWorker then calls next() on this generator, which starts an 
+        # TakeWorker then calls next() on this generator, which starts an
         # exposure via the ImageTaker thread, then yields. TakeWorker then
         # completes, returning control to the WX panel.
         # When the exposure is done and the new image is ready, an
         # ImageReadyEvent is posted, running OnImageReady.
         # This transfers the image and its time to instance variables, then
-        # cals next() on self.worker to continue from where it left off.
+        # calls next() on self.worker to continue from where it left off.
         # If an abort is issued, then the current exposure is stopped,
         # self.worker.next() is called and the worker handles the abort.
         if self.worker is not None:
@@ -456,15 +472,15 @@ class ControlPanel(wx.Panel):
                 self.worker.next()
             except StopIteration:
                 pass
-        
+
     def TakeWorker(self, worker):
         if not self.working:
             self.worker = worker()
             self.worker.next()
-    
+
     def TakeBias(self, e):
         self.TakeWorker(self.TakeBiasWorker)
-        
+
     def TakeBiasWorker(self):
         # Popup to check cover on?
         nbias = self.GetNumExp()
@@ -478,10 +494,9 @@ class ControlPanel(wx.Panel):
                     self.CheckForAbort()
                     self.TakeImage(exptime=0)
                     yield
-                    self.Log('Taken bias {:d}'.format(i+1))
                     self.CheckForAbort()
+                    self.Log('Taken bias {:d}'.format(i+1))
                     self.SaveImage('bias')
-                    #self.SaveRGBImages('bias')
                     self.CheckForAbort()
                     if i==0:
                         bias_stack = np.zeros((nbias,)+self.image.shape,
@@ -513,11 +528,12 @@ class ControlPanel(wx.Panel):
         if self.StartWorking():
             self.Log('### Taking {:d} flat images...'.format(nflat))
             try:
-                exptime = self.GetExpTime()
-                GetFlatExpTime = self.GetFlatExpTime(exptime)
+                startexptime = self.GetExpTime()
+                GetFlatExpTime = self.GetFlatExpTime(startexptime)
                 exptime = GetFlatExpTime.next()
-                if exptime is None:
+                while exptime is None:
                     yield
+                    exptime = GetFlatExpTime.next()
                 if exptime < 0:
                     self.Log('Flat images not obtained')
                 else:
@@ -543,11 +559,11 @@ class ControlPanel(wx.Panel):
                         self.SaveRGBImages('flat')
                         flat_stack[i] = self.image
                         self.CheckForAbort()
-                self.ProcessFlat(flat_stack)
-                self.CheckForAbort()
-                self.flat = self.image
-                self.SaveImage('masterflat')
-                self.SaveRGBImages('masterflat')
+                    self.ProcessFlat(flat_stack)
+                    self.CheckForAbort()
+                    self.flat = self.image
+                    self.SaveImage('masterflat')
+                    self.SaveRGBImages('masterflat')
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Flat images aborted')
@@ -574,11 +590,12 @@ class ControlPanel(wx.Panel):
                     self.CheckForAbort()
                     self.TakeImage(exptime)
                     yield
+                    self.CheckForAbort()
                     self.Log('Taken exposure {:d}'.format(i+1))
                     self.SaveImage()
                     self.Reduce()
                     self.SaveRGBImages()
-                    self.CheckForAbort()                    
+                    self.CheckForAbort()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Science images aborted')
@@ -601,6 +618,7 @@ class ControlPanel(wx.Panel):
                     self.CheckForAbort()
                     self.TakeImage(exptime)
                     yield
+                    self.CheckForAbort()
                     self.SaveImage(name='continuous')
                     self.Reduce()
                     self.SaveRGBImages(name='continuous')
@@ -625,6 +643,7 @@ class ControlPanel(wx.Panel):
                 self.CheckForAbort()
                 self.TakeImage(exptime)
                 yield
+                self.CheckForAbort()
                 self.Log('Acquisition exposure taken')
                 self.SaveImage('acq')
                 self.Reduce()
@@ -677,7 +696,7 @@ class ControlPanel(wx.Panel):
             im /= np.median(im.ravel()[s])
         # Take the median through the stack to produce masterflat
         self.image = np.median(stack, axis=0)
-        
+
     def BiasSubtract(self):
         if self.bias is not None:
             self.image -= self.bias
@@ -706,7 +725,7 @@ class ControlPanel(wx.Panel):
             self.tel.SlewToTarget()
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
-                        
+
     def GetFlatExpTime(self, start_exptime=None,
                        min_exptime=0.001, max_exptime=60.0,
                        min_counts=25000.0, max_counts=35000.0):
@@ -722,6 +741,8 @@ class ControlPanel(wx.Panel):
             yield
             self.CheckForAbort()
             self.BiasSubtract()
+            self.SaveImage(name='flattest')
+            self.DisplayImage()
             med_counts = np.median(self.image)
             self.Log('Median counts = {:.1f}'.format(med_counts))
             self.CheckForAbort()
@@ -752,7 +773,7 @@ class ControlPanel(wx.Panel):
             self.InitSAMP()
         if self.samp_client is not None:
             self.DS9LoadImage(self.images_path, self.filename, frame=1)
-        
+
     def DisplayRGBImage(self):
         if self.samp_client is None:
             self.InitSAMP()
@@ -844,23 +865,30 @@ class ControlPanel(wx.Panel):
         url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
         url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('fits', params={'url': url, 'name': filename})
-        
+
 class ControlError(Exception):
     def __init__(self, expr=None, msg=None):
         if debug:
-            print traceback.format_exc()
+            print(traceback.format_exc())
 
 class ControlAbortError(ControlError):
     def __init__(self, expr=None, msg=None):
         self.expr = expr
         self.msg = msg
 
+def excepthook(type, value, tb):
+    message = 'Uncaught exception:\n'
+    message += ''.join(traceback.format_exception(type, value, tb))
+    message += '\nSorry, somthing has gone wrong.\n'
+    message += 'Probably best to restart Control.'
+    print(message)
 
 def main():
+    sys.excepthook = excepthook
     app = wx.App(False)
     Control(None)
     app.MainLoop()
 
-        
+
 if __name__ == '__main__':
     main()
