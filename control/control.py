@@ -83,7 +83,6 @@ class ControlPanel(wx.Panel):
         self.images_root_path = "C:/Users/LabUser/Pictures/Telescope/"
         # special objects:
         self.tel = None
-        self.cam = None
         self.bias = None
         self.flat = None
         # initialisations
@@ -383,9 +382,7 @@ class ControlPanel(wx.Panel):
         except:
             pass
         try:
-            self.cam.Connected = False
-            # Only in a thread:
-            # win32com.client.pythoncom.CoUninitialize() # cam
+            self.stop_camera.set()
         except:
             pass
             
@@ -735,7 +732,7 @@ class ControlPanel(wx.Panel):
                          'shorter than {:.3f} sec'.format(min_exptime))
                 exptime = -1
                 break
-        return exptime
+        yield exptime
 
     def TakeImage(self, exptime):
         self.image = None
