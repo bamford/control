@@ -114,63 +114,72 @@ class GuiderPanel(wx.Panel):
         self.SetSizer(MainBox)
 
     def InitCameraButtons(self, panel, box):
+        subbox1 = wx.BoxSizer(wx.HORIZONTAL)
         self.ToggleCameraButton = wx.Button(panel, label='Start Camera')
         self.ToggleCameraButton.Bind(wx.EVT_BUTTON, self.ToggleCamera)
         self.ToggleCameraButton.SetToolTip(wx.ToolTip(
             'Start/stop taking guider images'))
         self.ToggleCameraButton.Disable()
-        box.Add(self.ToggleCameraButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+        subbox1.Add(self.ToggleCameraButton, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
                 border=10)
-        box.Add((20, 10))
-        box.Add(wx.StaticText(panel, label='Exp.Time'),
+        subbox1.Add((20, 10))
+        subbox1.Add(wx.StaticText(panel, label='Exp.Time'),
                        flag=wx.ALIGN_CENTER_VERTICAL|wx.RIGHT, border=5)
         self.ExpTimeCtrl = wx.TextCtrl(panel, size=(50,-1),)
         self.ExpTimeCtrl.ChangeValue('{:.3f}'.format(self.default_exptime))
         self.ExpTimeCtrl.SetToolTip(wx.ToolTip(
             'Exposure time for guider camera'))
-        box.Add(self.ExpTimeCtrl, flag=wx.ALIGN_CENTER_VERTICAL)
-        box.Add(wx.StaticText(panel, label='sec'),
+        subbox1.Add(self.ExpTimeCtrl, flag=wx.ALIGN_CENTER_VERTICAL)
+        subbox1.Add(wx.StaticText(panel, label='sec'),
                        flag=wx.ALIGN_CENTER_VERTICAL|wx.LEFT, border=5)
+        box.Add(subbox1, 0, flag=wx.EXPAND)
 
     def InitGuidingButtons(self, panel, box):
-        self.TrainGuidingButton = wx.Button(panel, label='Train Guiding')
-        self.TrainGuidingButton.Bind(wx.EVT_BUTTON, self.TrainGuiding)
-        self.TrainGuidingButton.SetToolTip(wx.ToolTip(
-            'Automatically train guiding system'))
-        self.TrainGuidingButton.Disable()
-        box.Add(self.TrainGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
-                border=10)
+        subbox1 = wx.BoxSizer(wx.VERTICAL)
         self.ToggleGuidingButton = wx.Button(panel, label='Start Guiding')
         self.ToggleGuidingButton.Bind(wx.EVT_BUTTON, self.ToggleGuiding)
         self.ToggleGuidingButton.SetToolTip(wx.ToolTip(
             'Start/stop guiding images'))
         self.ToggleGuidingButton.Disable()
-        box.Add(self.ToggleGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+        subbox1.Add(self.ToggleGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
                 border=10)
-        self.MoveAOLButton = wx.Button(panel, label='L')
+        self.TrainGuidingButton = wx.Button(panel, label='Train Guiding')
+        self.TrainGuidingButton.Bind(wx.EVT_BUTTON, self.TrainGuiding)
+        self.TrainGuidingButton.SetToolTip(wx.ToolTip(
+            'Automatically train guiding system'))
+        self.TrainGuidingButton.Disable()
+        subbox1.Add(self.TrainGuidingButton, 5, flag=wx.ALIGN_CENTER_VERTICAL|wx.ALL,
+                border=10)
+        box.Add(subbox1, 0, flag=wx.EXPAND)
+        sb = wx.StaticBox(self)
+        subbox2 = wx.StaticBoxSizer(sb, wx.VERTICAL)
+        grid = wx.GridBagSizer()
+        size = wx.Button.GetDefaultSize()
+        size[0] = size[1] * 1.5
+        self.MoveAOLButton = wx.Button(panel, label='L', size=size)
         self.MoveAOLButton.Bind(wx.EVT_BUTTON, self.MoveAOLeft)
         self.MoveAOLButton.SetToolTip(wx.ToolTip(
             'Move stars left'))
-        box.Add(self.MoveAOLButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
-                border=10)
-        self.MoveAORButton = wx.Button(panel, label='R')
+        grid.Add(self.MoveAOLButton, (1, 0))
+        self.MoveAORButton = wx.Button(panel, label='R', size=size)
         self.MoveAORButton.Bind(wx.EVT_BUTTON, self.MoveAORight)
         self.MoveAORButton.SetToolTip(wx.ToolTip(
             'Move stars right'))
-        box.Add(self.MoveAORButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
-                border=10)
-        self.MoveAOUButton = wx.Button(panel, label='U')
+        grid.Add(self.MoveAORButton, (1, 2))
+        self.MoveAOUButton = wx.Button(panel, label='U', size=size)
         self.MoveAOUButton.Bind(wx.EVT_BUTTON, self.MoveAOUp)
         self.MoveAOUButton.SetToolTip(wx.ToolTip(
             'Move stars up'))
-        box.Add(self.MoveAOUButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
-                border=10)
-        self.MoveAODButton = wx.Button(panel, label='D')
+        grid.Add(self.MoveAOUButton, (0, 1))
+        self.MoveAODButton = wx.Button(panel, label='D', size=size)
         self.MoveAODButton.Bind(wx.EVT_BUTTON, self.MoveAODown)
         self.MoveAODButton.SetToolTip(wx.ToolTip(
             'Move stars down'))
-        box.Add(self.MoveAODButton, 1, flag=wx.ALIGN_CENTER_VERTICAL,
-                border=10)
+        grid.Add(self.MoveAODButton, (2, 1))
+        subbox2.AddStretchSpacer()
+        subbox2.Add(grid, 0, flag=wx.EXPAND)
+        subbox2.AddStretchSpacer()
+        box.Add(subbox2, 0, flag=wx.EXPAND|wx.RIGHT, border=10)
         self.logger = wx.TextCtrl(panel, size=(300,90),
                         style=wx.TE_MULTILINE|wx.TE_READONLY)
         box.Add(self.logger, 1, flag=wx.ALIGN_CENTER_VERTICAL|wx.EXPAND)
