@@ -35,7 +35,10 @@ if not simulate:
 
 from guider import Guider
 from camera import TakeMainImageThread, EVT_IMAGEREADY
+from solver import SolverThread, EVT_SOLUTIONREADY
 from logevent import EVT_LOG
+
+
 
 class Control(wx.Frame):
 
@@ -47,6 +50,7 @@ class Control(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.Bind(EVT_LOG, self.panel.OnLog)
         self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
+        self.Bind(EVT_SOLUTIONREADY, self.panel.OnSolutionReady)
         self.Show(True)
         self.guider = Guider(self)
         self.guider.Hide()
@@ -623,6 +627,7 @@ class ControlPanel(wx.Panel):
                     yield
                     self.CheckForAbort()
                     self.Log('Taken exposure {:d}'.format(i+1))
+                    self.PlateSolve()
                     self.SaveImage()
                     self.Reduce()
                     self.SaveRGBImages()
@@ -676,9 +681,9 @@ class ControlPanel(wx.Panel):
                 yield
                 self.CheckForAbort()
                 self.Log('Acquisition exposure taken')
+                self.GetAstrometry()
                 self.SaveImage('acq')
                 self.Reduce()
-                self.GetAstrometry()
                 self.SaveRGBImages('acq')
             except ControlAbortError:
                 self.need_abort = False
@@ -864,7 +869,16 @@ class ControlPanel(wx.Panel):
         # obtain astrometry via astrometry.net
         # (local or web-based), then set
         # self.astrometry = True
-        pass
+        self.SaveImage(name='solve')
+        self.solver.put(('solve.fits', self.image_time, None))
+
+    def OnSolutionReady(self, event):
+        # TODO: add to image header
+        # TODO: determine (and apply?) pointing correction
+        message = 'Astrometry for image taken {}:\n{}'
+        message = message.format(event.image_time,
+                                 event.solution)
+        self.Log(message)
 
     def ToggleGuider(self, e):
         if self.main.guider.IsShown():
