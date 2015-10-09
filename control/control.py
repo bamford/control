@@ -41,7 +41,7 @@ class Control(wx.Frame):
 
     def __init__(self, *args, **kwargs):
         wx.Frame.__init__(self, *args, title='Control',
-                          size=(800, 600), **kwargs)
+                          size=(800, 800), **kwargs)
         self.__DoLayout()
         self.Log = self.panel.Log
         self.Bind(wx.EVT_CLOSE, self.OnQuit)

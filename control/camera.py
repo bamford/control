@@ -50,7 +50,6 @@ class TakeImageThread(threading.Thread):
 
     def run(self):
         self.InitCamera()
-        self.Log('Started camera')
         try:
             while not self.stopevent.is_set():
                 # only take images when camera is "on" and
@@ -65,8 +64,13 @@ class TakeImageThread(threading.Thread):
 
     def InitCamera(self):
         if not simulate:
-            win32com.client.pythoncom.CoInitialize()
-            self.cam = win32com.client.Dispatch(self.camera_id)
+            try:
+                win32com.client.pythoncom.CoInitialize()
+                self.cam = win32com.client.Dispatch(self.camera_id)
+                self.Log('Started camera')
+            except pythoncom.com_error:
+                self.Log('Error starting camera - is it connected and on?')
+                self.Log("Falling back to simulating camera")
         else:
             self.Log("Simulating camera")
             self.cam = None
@@ -116,8 +120,7 @@ class TakeImageThread(threading.Thread):
         image = None
         image_time = datetime.utcnow()
         if self.cam is not None:
-            # TODO: check camera not already exposing, and if it is
-            # stop it before starting new exposure
+            # TODO:check camera not already exposing?
             self.cam.StartExposure(exptime, True)
             while (not self.cam.ImageReady) and self.onevent.is_set():
                 time.sleep(self.check_period)
