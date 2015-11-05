@@ -172,6 +172,10 @@ class TakeGuiderImageThread(TakeImageThread):
     def __init__(self, parent, stopevent, onevent, exptime):
         TakeImageThread.__init__(self, parent, stopevent, onevent, exptime)
         self.continuous = True
+        # Something bizarre is happening!
+        # Somehow, the camera connection for the guider thread is being used
+        # for the main thread.  Don't know how!
+        # Next thing to try is using different ImageReadyEvent classes.
         self.camera_id = "ASCOM.SXGuide0.Camera"
         self.imshape = (600, 400)
         self.check_period = 0.1
