@@ -1,13 +1,9 @@
 import wx
 import threading
-import time
-from datetime import datetime
-import numpy as np
 
 from logevent import *
 
-from astrotortilla.solver import AstrometryNetSolver, AstrometryNetWebSolver
-
+import astrotortilla.solver.AstrometryNetSolver as AstSolve
 
 # ------------------------------------------------------------------------------
 # Event to signal that a new solution is ready for use
@@ -34,17 +30,18 @@ class SolverThread(threading.Thread):
         self.start()
 
     def run(self):
-        self.solver = AstrometryNetWebSolver(timout=self.timeout,
-                                             callback=self.Log)
+        self.solver = AstSolve.AstrometryNetSolver()
+        self.solver.timeout = self.timeout
         try:
             while True:
                 incoming = self.incoming.get()
-                if incoming is not None:
-                    fn, kwargs = incoming
-                    solution = self.solver.solve(fn, **kwargs)
-                    wx.PostEvent(self.parent,
-                                 SolutionReadyEvent(solution=solution,
-                                                    image_time=image_time))
+                if incoming is None:
+                    break
+                fn, image_time, kwargs = incoming
+                solution = self.solver.solve(fn, **kwargs)
+                wx.PostEvent(self.parent,
+                             SolutionReadyEvent(solution=solution,
+                                            image_time=image_time))
         except Exception as detail:
             self.Log('Error in solver:\n{}'.format(detail))
             raise

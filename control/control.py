@@ -8,6 +8,7 @@ import wx
 import threading
 from datetime import datetime, timedelta
 import time
+from Queue import Queue
 import os.path
 from glob import glob
 import StringIO
@@ -34,7 +35,7 @@ if not simulate:
         simulate = True
 
 from guider import Guider
-from camera import TakeMainImageThread, EVT_IMAGEREADY
+from camera import TakeMainImageThread, EVT_IMAGEREADY_MAIN
 from solver import SolverThread, EVT_SOLUTIONREADY
 from logevent import EVT_LOG
 
@@ -49,7 +50,7 @@ class Control(wx.Frame):
         self.Log = self.panel.Log
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.Bind(EVT_LOG, self.panel.OnLog)
-        self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
+        self.Bind(EVT_IMAGEREADY_MAIN, self.panel.OnImageReady)
         self.Bind(EVT_SOLUTIONREADY, self.panel.OnSolutionReady)
         self.Show(True)
         self.guider = Guider(self)
@@ -73,6 +74,7 @@ class Control(wx.Frame):
     def OnQuit(self, e):
         self.panel.OnQuit(None)
         self.guider.OnExit(None)
+        time.sleep(1)
         self.Destroy()
         e.Skip()
 
@@ -89,7 +91,7 @@ class ControlPanel(wx.Panel):
         self.max_ncontinuous = 100
         self.flat_offset = (10.0, 10.0)
         self.readout_time = 3.0
-        self.images_root_path = "C:/Users/LabUser/Dropbox/control/"
+        self.images_root_path = "C:/Users/lab_user/Dropbox/control/"
         # special objects:
         self.tel = None
         self.bias = None
@@ -102,6 +104,7 @@ class ControlPanel(wx.Panel):
         self.InitDS9()
         self.InitTelescope()
         self.InitCamera()
+        self.InitSolver()
         self.LoadCalibrations()
 
     def InitCamera(self):
@@ -173,6 +176,13 @@ class ControlPanel(wx.Panel):
                                                         self.night))
         if not os.path.exists(self.images_path):
             os.makedirs(self.images_path)
+            
+    def InitSolver(self):
+        self.solver = Queue()
+        self.SolverThread = SolverThread(self, self.solver)
+
+    def StopSolver(self):
+        self.solver.set(None)
 
     def LoadCalibrations(self):
         # look for existing masterbias and masterflat images
@@ -390,7 +400,11 @@ class ControlPanel(wx.Panel):
         timeStamp = now.strftime('%H:%M:%S UT')
         text = "{} : {}\n".format(timeStamp, text)
         self.logger.AppendText(text)
-        self.logfile.write(text)
+        try:
+            self.logfile.write(text)
+        except ValueError:
+            # no logfile to write to
+            pass
         if self.holdingBack:
             self.logger.SetInsertionPoint(currentCaretPosition)
             self.logger.SetSelection(currentSelectionStart, currentSelectionEnd)
@@ -404,6 +418,10 @@ class ControlPanel(wx.Panel):
     def OnQuit(self, e):
         try:
             self.StopCamera()
+        except:
+            pass
+        try:
+            self.StopSolver()
         except:
             pass
         if self.samp_client is not None:
@@ -735,7 +753,7 @@ class ControlPanel(wx.Panel):
 
     def BiasSubtract(self):
         if self.bias is not None:
-            self.image -= self.bias
+            self.image = self.image - self.bias
             self.Log("Subtracting bias")
             return True
         else:
@@ -744,7 +762,7 @@ class ControlPanel(wx.Panel):
 
     def Flatfield(self):
         if self.flat is not None:
-            self.image /= self.flat
+            self.image = self.image / self.flat
             self.Log("Flatfielding")
             return True
         else:
@@ -801,6 +819,11 @@ class ControlPanel(wx.Panel):
     def TakeImage(self, exptime):
         self.image = None
         self.filters = None
+        if True or (not self.ImageTaker.isAlive()):
+            self.Log("Restarting camera")
+            self.StopCamera()
+            self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
+                                                  self.take_image, 0.0)
         self.ImageTaker.SetExpTime(exptime)
         self.take_image.set()
 
@@ -870,7 +893,7 @@ class ControlPanel(wx.Panel):
         # (local or web-based), then set
         # self.astrometry = True
         self.SaveImage(name='solve')
-        self.solver.put(('solve.fits', self.image_time, None))
+        self.solver.put(('solve.fits', self.image_time, {}))
 
     def OnSolutionReady(self, event):
         # TODO: add to image header

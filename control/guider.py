@@ -23,7 +23,7 @@ if not simulate:
     except ImportError:
         simulate = True
 
-from camera import TakeGuiderImageThread, EVT_IMAGEREADY
+from camera import TakeGuiderImageThread, EVT_IMAGEREADY_GUIDER
 from ao import AOThread
 from logevent import EVT_LOG
 
@@ -39,7 +39,7 @@ class Guider(wx.Frame):
         self.__DoLayout()
         self.Bind(wx.EVT_CLOSE, self.OnQuit)
         self.Bind(EVT_LOG, self.panel.OnLog)
-        self.Bind(EVT_IMAGEREADY, self.panel.OnImageReady)
+        self.Bind(EVT_IMAGEREADY_GUIDER, self.panel.OnImageReady)
         if self.parent is None:
             self.Show(True)
 
@@ -59,7 +59,7 @@ class Guider(wx.Frame):
             self.parent.panel.ToggleGuider(e)
 
     def OnExit(self, e):
-        self.panel.stop_camera.set()
+        self.panel.OnExit(e)
         self.Destroy()
 
 
@@ -71,7 +71,7 @@ class GuiderPanel(wx.Panel):
         wx.Panel.__init__(self, *args, **kwargs)
         self.main = args[0]
         # config start
-        self.comport = 3
+        self.comport = 4
         self.timeout = 10  # seconds
         self.dark = None
         self.default_exptime = 1.0  # seconds
@@ -456,6 +456,10 @@ class GuiderPanel(wx.Panel):
 
     def OnLog(self, event):
         self.Log(event.text)
+        
+    def OnExit(self, event):
+        self.stop_camera.set()
+        time.sleep(1)
 
 
 def main():
