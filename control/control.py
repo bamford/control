@@ -176,7 +176,7 @@ class ControlPanel(wx.Panel):
                                                         self.night))
         if not os.path.exists(self.images_path):
             os.makedirs(self.images_path)
-            
+
     def InitSolver(self):
         self.solver = Queue()
         self.SolverThread = SolverThread(self, self.solver)
@@ -835,32 +835,38 @@ class ControlPanel(wx.Panel):
     def DisplayRGBImage(self):
         self.InitSAMP()
         if self.samp_client is not None:
-            self.DS9SelectFrame(2)
-            for f in ('red', 'green', 'blue'):
-                # Could this be all done in one SAMP command?
-                self.DS9Command('rgb {}'.format(f))
-                self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
-            self.DS9Command('rgb close')
+            # self.DS9SelectFrame(2)
+            # for f in ('red', 'green', 'blue'):
+            #     # Could this be all done in one SAMP command?
+            #     self.DS9Command('rgb {}'.format(f))
+            #     self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
+            # self.DS9Command('rgb close')
+            self.DS9LoadRGBImage(self.images_path, self.rgb_filename, frame=2)
 
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
         self.SaveImage(imtype, name, filters=True)
         self.DisplayRGBImage()
 
-    def SaveImage(self, imtype=None, name=None, filters=False):
+    def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
         if name is None:
             name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         if imtype is not None:
             name += '_{}'.format(imtype)
-        header = None
-        if filters is False:
+        header = None  # could contain a previously determined WCS
+        if (filters or filtersum) is False:
             filename = name+'.fits'
             self.filename = filename
             fullfilename = os.path.join(self.images_path, filename)
             pyfits.writeto(fullfilename, self.image, header,
                            clobber=clobber)
             self.Log('Saved {}'.format(filename))
+        elif filtersum:
+            filename = name+'.fits'
+            fullfilename = os.path.join(self.images_path, filename)
+            pyfits.writeto(fullfilename, np.sum(self.filters), header,
+                           clobber=clobber)
         else:
             self.filters_filename = {}
             for i, f in enumerate('rgb'):
@@ -870,6 +876,13 @@ class ControlPanel(wx.Panel):
                 pyfits.writeto(fullfilename, self.filters[i], header,
                                clobber=clobber)
                 self.Log('Saved {}'.format(filename))
+            self.rgb_filename = name+'_rgb.fits'
+            fullfilename = os.path.join(self.images_path, self.rgbfilename)
+            pyfits.writeto(fullfilename, self.filters[0], header,
+                           clobber=clobber)
+            pyfits.append(fullfilename, self.filters[1], header)
+            pyfits.append(fullfilename, self.filters[2], header)
+            self.Log('Saved {}'.format(filename))
         self.DisplayImage()
 
     def DeBayer(self):
@@ -892,7 +905,7 @@ class ControlPanel(wx.Panel):
         # obtain astrometry via astrometry.net
         # (local or web-based), then set
         # self.astrometry = True
-        self.SaveImage(name='solve')
+        self.SaveImage(name='solve', filtersum=True)
         self.solver.put(('solve.fits', self.image_time, {}))
 
     def OnSolutionReady(self, event):
@@ -934,6 +947,13 @@ class ControlPanel(wx.Panel):
         url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
         url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('fits', params={'url': url, 'name': filename})
+
+    def DS9LoadRGBImage(self, path, filename, frame=None):
+        if frame is not None:
+            self.DS9SelectFrame(frame)
+        url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
+        url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
+        self.DS9Command('fits rgbimage', params={'url': url, 'name': filename})
 
 
 class ControlError(Exception):
