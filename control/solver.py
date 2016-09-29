@@ -3,7 +3,11 @@ import threading
 
 from logevent import *
 
+from scipy.ndimage.filters import median_filter, gaussian_filter
+import astropy.io.fits as pyfits
+
 import astrotortilla.solver.AstrometryNetSolver as AstSolve
+from astrotortilla.units import Coordinate
 
 # ------------------------------------------------------------------------------
 # Event to signal that a new solution is ready for use
@@ -37,8 +41,19 @@ class SolverThread(threading.Thread):
                 incoming = self.incoming.get()
                 if incoming is None:
                     break
-                fn, image_time, kwargs = incoming
-                solution = self.solver.solve(fn, **kwargs)
+                filters, fn, image_time, position = incoming
+                self.CreateSolveImage(filters, fn)
+                kwargs = {'minFov': 0.25, 'maxFov': 0.5,
+                          'targetRadius': 5}
+                if position is not None:
+                    target = Coordinate(position.ra.deg, position.dec.deg)                    
+                    kwargs['target'] = target
+                solution = self.solver.solve(fn, callback=self.Log,
+                                             **kwargs)
+                if solution is None:
+                    del kwargs['target']
+                    solution = self.solver.solve(fn, callback=self.Log,
+                                                 **kwargs)
                 wx.PostEvent(self.parent,
                              SolutionReadyEvent(solution=solution,
                                             image_time=image_time))
@@ -47,4 +62,13 @@ class SolverThread(threading.Thread):
             raise
 
     def Log(self, text):
-        wx.PostEvent(self.parent, LogEvent(text=text))
+        if (text is not None) and (len(text.strip()) > 0):
+            wx.PostEvent(self.parent, LogEvent(text=text.strip()))
+            
+    def CreateSolveImage(self, filters, filename):
+        self.Log('Filtering image for astrometry')
+        image = filters.sum(0)
+        background = median_filter(image, (25, 25))
+        image -= background
+        image = gaussian_filter(image, 3)
+        pyfits.writeto(filename, image, clobber=True)

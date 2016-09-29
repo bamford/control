@@ -18,6 +18,9 @@ if not simulate:
     except ImportError:
         simulate = True
 
+# Avoid multiple processes connecting to camera at same time
+COMlock = threading.Lock()
+        
 # ------------------------------------------------------------------------------
 # Event to signal that a new image is ready for use
 myEVT_IMAGEREADY_MAIN = wx.NewEventType()
@@ -60,11 +63,12 @@ class TakeImageThread(threading.Thread):
         self.SetExpTime(exptime)
 
     def run(self):
-        self.InitCamera()
+        with COMlock:
+            self.InitCamera()
         try:
             while not self.stopevent.is_set():
                 # only take images when camera is "on" and
-                # do not try to take images faster than one per second
+                # check for stopevent every second
                 if self.onevent.wait(1.0):
                     if self.cam.CameraState > 4:
                         self.Log('Camera error')
@@ -156,7 +160,7 @@ class TakeImageThread(threading.Thread):
                          image.shape[0],
                          image.shape[1]))
             else:
-                self.Log('Stopping current exposure early')
+                #self.Log('Stopping current exposure early')
                 self.cam.StopExposure()
         else:
             image = self.SimulateImage(exptime)

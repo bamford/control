@@ -71,7 +71,7 @@ class GuiderPanel(wx.Panel):
         wx.Panel.__init__(self, *args, **kwargs)
         self.main = args[0]
         # config start
-        self.comport = 4
+        self.comport = 3
         self.timeout = 10  # seconds
         self.dark = None
         self.default_exptime = 1.0  # seconds
