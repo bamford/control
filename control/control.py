@@ -176,7 +176,7 @@ class ControlPanel(wx.Panel):
                                                         self.night))
         if not os.path.exists(self.images_path):
             os.makedirs(self.images_path)
-            
+
     def InitSolver(self):
         self.solver = Queue()
         self.SolverThread = SolverThread(self, self.solver)
@@ -835,12 +835,13 @@ class ControlPanel(wx.Panel):
     def DisplayRGBImage(self):
         self.InitSAMP()
         if self.samp_client is not None:
-            self.DS9SelectFrame(2)
-            for f in ('red', 'green', 'blue'):
-                # Could this be all done in one SAMP command?
-                self.DS9Command('rgb {}'.format(f))
-                self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
-            self.DS9Command('rgb close')
+            # self.DS9SelectFrame(2)
+            # for f in ('red', 'green', 'blue'):
+            #     # Could this be all done in one SAMP command?
+            #     self.DS9Command('rgb {}'.format(f))
+            #     self.DS9LoadImage(self.images_path, self.filters_filename[f[0]])
+            # self.DS9Command('rgb close')
+            self.DS9LoadRGBImage(self.images_path, self.rgb_filename, frame=2)
 
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
@@ -853,7 +854,7 @@ class ControlPanel(wx.Panel):
             name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         if imtype is not None:
             name += '_{}'.format(imtype)
-        header = None
+        header = None  # could contain a previously determined WCS
         if filters is False:
             filename = name+'.fits'
             self.filename = filename
@@ -870,6 +871,13 @@ class ControlPanel(wx.Panel):
                 pyfits.writeto(fullfilename, self.filters[i], header,
                                clobber=clobber)
                 self.Log('Saved {}'.format(filename))
+            self.rgb_filename = name+'_rgb.fits'
+            fullfilename = os.path.join(self.images_path, self.rgbfilename)
+            pyfits.writeto(fullfilename, self.filters[0], header,
+                           clobber=clobber)
+            pyfits.append(fullfilename, self.filters[1], header)
+            pyfits.append(fullfilename, self.filters[2], header)
+            self.Log('Saved {}'.format(filename))
         self.DisplayImage()
 
     def DeBayer(self):
@@ -934,6 +942,13 @@ class ControlPanel(wx.Panel):
         url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
         url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('fits', params={'url': url, 'name': filename})
+
+    def DS9LoadRGBImage(self, path, filename, frame=None):
+        if frame is not None:
+            self.DS9SelectFrame(frame)
+        url = urlparse.urljoin('file:', os.path.abspath(os.path.join(path, filename)))
+        url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
+        self.DS9Command('fits rgbimage', params={'url': url, 'name': filename})
 
 
 class ControlError(Exception):

@@ -150,7 +150,7 @@ class TakeImageThread(threading.Thread):
                 time.sleep(self.check_period)
             if self.cam.ImageReady and self.onevent.is_set():
                 image = np.array(self.cam.ImageArray)
-                self.Log("{}x{}, {}x{}".format(
+                self.Log("Check image size: {}x{}, {}x{}".format(
                          self.cam.CameraXSize,
                          self.cam.CameraYSize,
                          image.shape[0],
