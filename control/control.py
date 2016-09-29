@@ -819,7 +819,7 @@ class ControlPanel(wx.Panel):
     def TakeImage(self, exptime):
         self.image = None
         self.filters = None
-        if True or (not self.ImageTaker.isAlive()):
+        if not self.ImageTaker.isAlive():
             self.Log("Restarting camera")
             self.StopCamera()
             self.ImageTaker = TakeMainImageThread(self, self.stop_camera,
