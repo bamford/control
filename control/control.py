@@ -848,20 +848,25 @@ class ControlPanel(wx.Panel):
         self.SaveImage(imtype, name, filters=True)
         self.DisplayRGBImage()
 
-    def SaveImage(self, imtype=None, name=None, filters=False):
+    def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
         if name is None:
             name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         if imtype is not None:
             name += '_{}'.format(imtype)
         header = None  # could contain a previously determined WCS
-        if filters is False:
+        if (filters or filtersum) is False:
             filename = name+'.fits'
             self.filename = filename
             fullfilename = os.path.join(self.images_path, filename)
             pyfits.writeto(fullfilename, self.image, header,
                            clobber=clobber)
             self.Log('Saved {}'.format(filename))
+        elif filtersum:
+            filename = name+'.fits'
+            fullfilename = os.path.join(self.images_path, filename)
+            pyfits.writeto(fullfilename, np.sum(self.filters), header,
+                           clobber=clobber)
         else:
             self.filters_filename = {}
             for i, f in enumerate('rgb'):
@@ -900,7 +905,7 @@ class ControlPanel(wx.Panel):
         # obtain astrometry via astrometry.net
         # (local or web-based), then set
         # self.astrometry = True
-        self.SaveImage(name='solve')
+        self.SaveImage(name='solve', filtersum=True)
         self.solver.put(('solve.fits', self.image_time, {}))
 
     def OnSolutionReady(self, event):
