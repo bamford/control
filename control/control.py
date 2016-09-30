@@ -709,9 +709,9 @@ class ControlPanel(wx.Panel):
                     yield
                     self.CheckForAbort()
                     self.SaveImage(name='continuous')
-                    self.Reduce()
-                    self.SaveRGBImages(name='continuous')
-                    self.DisplayRGBImage()
+                    #self.Reduce()
+                    #self.SaveRGBImages(name='continuous')
+                    #self.DisplayRGBImage()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Continuous done')
@@ -949,8 +949,8 @@ class ControlPanel(wx.Panel):
         path = os.path.join(self.images_root_path, 'solve')
         if not os.path.exists(path):
             os.makedirs(path)
-        fullfilename = os.path.join(path, 'solve.fits')
-        self.solver.put((self.filters, fullfilename,
+        solvefilename = os.path.join(path, 'solve.fits')
+        self.solver.put((self.filters, solvefilename,
                          self.image_time,
                          [self.filename] + self.filters_filename.values(),
                          self.image_tel_position))
@@ -960,7 +960,6 @@ class ControlPanel(wx.Panel):
         if event.solution is not None:
             message = 'Astrometry for image taken {}:\n{}'
             message = message.format(event.image_time,
-                                     event.filenames,
                                      event.solution)
             c = coord.SkyCoord(ra=event.solution.center.RA,
                                dec=event.solution.center.dec,
@@ -981,6 +980,7 @@ class ControlPanel(wx.Panel):
 
     def UpdateFileWCS(self, filenames):
         if self.wcs is not None:
+            filenames = [os.path.join(self.images_path, f) for f in filenames]
             for fn in filenames:
                 with pyfits.open(fn, mode='update') as f:
                     f[0].header.update(self.wcs)

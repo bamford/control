@@ -42,13 +42,15 @@ class SolverThread(threading.Thread):
         self.solver.timeout = self.timeout
         self.solver.setProperty('downscale', 2)
         self.solver.setProperty('xtra', '--depth 20 --no-plots '
-                                        '-N none')
+                                        '-N none --overwrite '
+                                        '--scale-units arcsecperpix '
+                                        '--scale-low 0.45 --scale-high 0.65')
         try:
             while True:
                 incoming = self.incoming.get()
                 if incoming is None:
                     break
-                filters, fn, filenames, image_time, position = incoming
+                filters, fn, image_time, filenames, position = incoming
                 self.CreateSolveImage(filters, fn)
                 kwargs = {'minFov': 0.25, 'maxFov': 0.5,
                           'targetRadius': 5}
