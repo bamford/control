@@ -24,7 +24,7 @@ PROPERTYLIST = {
         "scale_max":(_("Scale maximum"), float, _("Image scale upper bound"), "", 179),
         "scale_units":(_("Scale units"), str, _("View scale size units"), _("arcminwidth, degwidth, arcsecperpix"), "degwidth"),
         "scale_xrefine":(_("Scale refinement"), float, _("Image scale refinement factor"), _("0 to turn off"), 0),
-        "xtra":(_("Custom options"), str, _("Additional custom options"), "", "--sigma 1 --no-plots -N none"),
+        "xtra":(_("Custom options"), str, _("Additional custom options"), "", "--sigma 1 --no-plots -N none --overwrite"),
         "shell":(_("Cygwin shell"), str, _("Shell command for Cygwin execution"), "", 'C:\\cygwin\\bin\\bash --login -c "%s"'),
         "shell_hide":(_("Hide Cygwin"), bool, _("Hide Cygwin window while solving"), "True, False", True),
         "year_epoch":(_("JNow or J2000"), str, _("JNOW or J2000"), "", "JNOW"),
@@ -156,7 +156,10 @@ class AstrometryNetSolver(IPlateSolver):
         self.__found = False
         self.__abort = False
         # construct command line
-        workDir = os.path.join(self.__wd, str(self.__counter)).replace("\\", "/")
+        if self.__wdCreated is not None:
+            workDir = os.path.join(self.__wd, str(self.__counter)).replace("\\", "/")
+        else:
+            workDir = self.__wd.replace("\\", "/")
         imageBase = os.path.splitext(os.path.basename(imagePath))[0].replace("\\", "/")
         resultRoot = os.path.join(workDir, imageBase).replace("\\", "/")
         imagePath = imagePath.replace("\\", "/")

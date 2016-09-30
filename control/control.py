@@ -72,8 +72,7 @@ class Control(wx.Frame):
         self.guider.OnExit(None)
         time.sleep(1)
         self.panel.OnQuit(None)
-        time.sleep(3)
-        self.Destroy()
+        wx.CallLater(1000, self.Destroy)
         e.Skip()
 
 class ControlPanel(wx.Panel):
@@ -98,11 +97,17 @@ class ControlPanel(wx.Panel):
         # initialisations
         self.InitPaths()
         self.InitPanel()
+        wx.Yield()
         self.InitSAMP()
+        wx.Yield()
         self.InitDS9()
+        wx.Yield()
         self.InitTelescope()
+        wx.Yield()
         self.InitCamera()
+        wx.Yield()
         self.InitSolver()
+        wx.Yield()
         self.LoadCalibrations()
 
     def InitCamera(self):
@@ -114,6 +119,7 @@ class ControlPanel(wx.Panel):
     def StopCamera(self):
         self.stop_camera.set()
         self.take_image.clear()
+        self.sleep(1)
 
     def InitTelescope(self):
         if not simulate:
@@ -179,11 +185,15 @@ class ControlPanel(wx.Panel):
             os.makedirs(self.images_path)
 
     def InitSolver(self):
+        self.wcs = None
         self.solver = Queue()
-        self.SolverThread = SolverThread(self, self.solver)
+        self.SolverThread = SolverThread(self, self.solver,
+                                directory=os.path.join(self.images_root_path,
+                                                       'solve'))
 
     def StopSolver(self):
         self.solver.set(None)
+        time.sleep(0.1)
 
     def LoadCalibrations(self):
         # look for existing masterbias and masterflat images
@@ -339,15 +349,20 @@ class ControlPanel(wx.Panel):
         box.Add((-1, 10))
         # Telescope position
         subBox = wx.BoxSizer(wx.HORIZONTAL)
-        self.tel_ra = wx.StaticText(panel, size=(-1,250))
+        subBox.Add(wx.StaticText(panel, label="Telescope:", size=(100,-1)))
+        subBox.Add((20, -1))
+        self.tel_ra = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.tel_ra)
         subBox.Add((20, -1))
         self.tel_dec = wx.StaticText(panel)
         subBox.Add(self.tel_dec)
         box.Add(subBox, 0)
+        box.Add((-1, 10))
         # Astrometry position
         subBox = wx.BoxSizer(wx.HORIZONTAL)
-        self.ast_ra = wx.StaticText(panel, size=(-1,250))
+        subBox.Add(wx.StaticText(panel, label="Astrometry:", size=(100,-1)))
+        subBox.Add((20, -1))
+        self.ast_ra = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.ast_ra)
         subBox.Add((20, -1))
         self.ast_dec = wx.StaticText(panel)
@@ -376,7 +391,7 @@ class ControlPanel(wx.Panel):
             self.tel_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
             dec = c.dec.to_string(u.degree, precision=1, pad=True, alwayssign=True)
-            self.tel_ra.SetLabel('Telescope: RA:  ' + ra)
+            self.tel_ra.SetLabel('RA:  ' + ra)
             self.tel_dec.SetLabel('Dec:  '+dec)
         else:
             self.tel_position = None
@@ -392,9 +407,8 @@ class ControlPanel(wx.Panel):
         text = "Log started {}\n".format(timeStamp)
         text += 'Storing images in {}\n'.format(self.images_path)
         self.logger.AppendText(text)
-        dateStamp = now.strftime('%Y-%m-%d')
         self.logfilename = os.path.abspath(os.path.join(self.images_path,
-                                                    'log_' + dateStamp))
+                                                    'log_' + self.night))
         self.logfile = file(self.logfilename, 'a')
         self.logfile.write(text)
 
@@ -603,6 +617,7 @@ class ControlPanel(wx.Panel):
                         if not ok:
                             raise ControlError('Cannot create flat without bias')
                         self.SaveRGBImages('flat')
+                        self.DisplayRGBImage()
                         flat_stack[i] = self.image
                         self.CheckForAbort()
                     self.ProcessFlat(flat_stack)
@@ -610,6 +625,7 @@ class ControlPanel(wx.Panel):
                     self.flat = self.image
                     self.SaveImage('masterflat')
                     self.SaveRGBImages('masterflat')
+                    self.DisplayRGBImage()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Flat images aborted')
@@ -658,10 +674,15 @@ class ControlPanel(wx.Panel):
                     yield
                     self.CheckForAbort()
                     self.Log('Taken exposure {:d}'.format(i+1))
-                    #self.PlateSolve()
+                    # TESTING!!!
+                    fullfilename = os.path.join(self.images_root_path, 'solve',
+                                                'test.fits')
+                    self.image = pyfits.getdata(fullfilename)
                     self.SaveImage()
                     self.Reduce()
                     self.SaveRGBImages()
+                    self.GetAstrometry()
+                    self.DisplayRGBImage()
                     self.CheckForAbort()
             except ControlAbortError:
                 self.need_abort = False
@@ -690,6 +711,7 @@ class ControlPanel(wx.Panel):
                     self.SaveImage(name='continuous')
                     self.Reduce()
                     self.SaveRGBImages(name='continuous')
+                    self.DisplayRGBImage()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Continuous done')
@@ -714,12 +736,15 @@ class ControlPanel(wx.Panel):
                 yield
                 self.CheckForAbort()
                 self.Log('Acquisition exposure taken')
-                fullfilename = os.path.join(self.images_path, 'test.fits')
+                # TESTING!!!
+                fullfilename = os.path.join(self.images_root_path, 'solve',
+                                            'test.fits')
                 self.image = pyfits.getdata(fullfilename)
                 self.SaveImage('acq')
                 self.Reduce()
                 self.SaveRGBImages('acq')
                 self.GetAstrometry()
+                self.DisplayRGBImage()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Acquisition image aborted')
@@ -864,7 +889,6 @@ class ControlPanel(wx.Panel):
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
         self.SaveImage(imtype, name, filters=True)
-        self.DisplayRGBImage()
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
@@ -872,7 +896,10 @@ class ControlPanel(wx.Panel):
             name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         if imtype is not None:
             name += '_{}'.format(imtype)
-        header = None  # could contain a previously determined WCS
+        if self.wcs is not None:
+            header = self.wcs
+        else:
+            header = None
         if (filters or filtersum) is False:
             filename = name+'.fits'
             self.filename = filename
@@ -916,37 +943,48 @@ class ControlPanel(wx.Panel):
         r, g1, g2, b = filters
         g = (g1+g2)/2.0
         self.filters = np.array([r, g, b])
-        self.astrometry = False
 
     def GetAstrometry(self):
-        # placeholder method to be implemented
-        # obtain astrometry via astrometry.net
-        # (local or web-based), then set
-        # self.astrometry = True
-        self.Log('Attempting to determine astrometric solution')
-        fullfilename = os.path.join(self.images_path, 'solve.fits')
+        self.Log('Attempting to determine astrometry')
+        path = os.path.join(self.images_root_path, 'solve')
+        if not os.path.exists(path):
+            os.makedirs(path)
+        fullfilename = os.path.join(path, 'solve.fits')
         self.solver.put((self.filters, fullfilename,
                          self.image_time,
+                         [self.filename] + self.filters_filename.values(),
                          self.image_tel_position))
-        
+
     def OnSolutionReady(self, event):
-        # TODO: add to image header
         # TODO: determine (and apply?) pointing correction
-        message = 'Astrometry for image taken {}:\n{}'
-        message = message.format(event.image_time,
-                                 event.solution)
-        self.Log(message)
         if event.solution is not None:
-            c = coord.SkyCoord(ra=event.solution.RA,
-                               dec=event.solution.dec,
+            message = 'Astrometry for image taken {}:\n{}'
+            message = message.format(event.image_time,
+                                     event.filenames,
+                                     event.solution)
+            c = coord.SkyCoord(ra=event.solution.center.RA,
+                               dec=event.solution.center.dec,
                                unit=(u.degree, u.degree), frame='icrs')
             self.ast_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
-            dec = c.dec.to_string(u.degree, precision=1, pad=True, alwayssign=True)
-            self.ast_ra.SetLabel('Astrometry: RA:  ' + ra)
-            self.ast_dec.SetLabel('Dec:  '+dec)
-            self.wcs = pyfits.getheader(os.path.join(self.images_path,
-                                                     'test.wcs'))
+            dec = c.dec.to_string(u.degree, precision=1, pad=True,
+                                  alwayssign=True)
+            self.ast_ra.SetLabel('RA:  ' + ra)
+            self.ast_dec.SetLabel('Dec:  ' + dec)
+            self.wcs = pyfits.getheader(os.path.join(self.images_root_path,
+                                                     'solve', 'solve.wcs'))
+            self.UpdateFileWCS(event.filenames)
+        else:
+            message = 'Astrometry for image taken {}: failed'
+            message = message.format(event.image_time)
+        self.Log(message)
+
+    def UpdateFileWCS(self, filenames):
+        if self.wcs is not None:
+            for fn in filenames:
+                with pyfits.open(fn, mode='update') as f:
+                    f[0].header.update(self.wcs)
+                self.Log('Updated WCS of {}'.format(os.path.basename(fn)))
 
     def ToggleGuider(self, e):
         if self.main.guider.IsShown():
@@ -957,6 +995,7 @@ class ControlPanel(wx.Panel):
             self.GuiderButton.SetLabel('Hide Guider')
 
     def DS9Command(self, cmd, url=None, params=None):
+        wx.Yield()
         if params is None:
             params = {'cmd': cmd}
         else:

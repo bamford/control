@@ -50,6 +50,7 @@ class ImageReadyEventGuider(wx.PyCommandEvent):
 class TakeImageThread(threading.Thread):
     def __init__(self, parent, stopevent, onevent, exptime):
         threading.Thread.__init__(self)
+        self.daemon = True
         self.parent = parent
         self.stopevent = stopevent
         self.onevent = onevent
@@ -154,11 +155,11 @@ class TakeImageThread(threading.Thread):
                 time.sleep(self.check_period)
             if self.cam.ImageReady and self.onevent.is_set():
                 image = np.array(self.cam.ImageArray)
-                self.Log("Check image size: {}x{}, {}x{}".format(
-                         self.cam.CameraXSize,
-                         self.cam.CameraYSize,
-                         image.shape[0],
-                         image.shape[1]))
+                #self.Log("Check image size: {}x{}, {}x{}".format(
+                #         self.cam.CameraXSize,
+                #         self.cam.CameraYSize,
+                #         image.shape[0],
+                #         image.shape[1]))
             else:
                 #self.Log('Stopping current exposure early')
                 self.cam.StopExposure()
