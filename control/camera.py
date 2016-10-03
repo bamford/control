@@ -61,6 +61,7 @@ class TakeImageThread(threading.Thread):
         self.check_period = 1.0
         self.cam = None
         self.exptime_lock = threading.Lock()
+        self.camera_lock = threading.Lock()
         self.SetExpTime(exptime)
 
     def run(self):
@@ -94,6 +95,7 @@ class TakeImageThread(threading.Thread):
                 self.cam = win32com.client.Dispatch(self.camera_id)
                 self.Log('Starting camera {}'.format(self.camera_id))
                 self.Connect()
+                #self.SetWindowing(False)
             except pythoncom.com_error:
                 self.Log('Error starting camera - is it connected and on?')
                 self.Log("Falling back to simulating camera")
@@ -133,11 +135,25 @@ class TakeImageThread(threading.Thread):
                 self.Log("Unable to disconnect from camera")
             self.cam = None
             win32com.client.pythoncom.CoUninitialize()
+            
+    def SetWindowing(self, window=False, nx=100, ny=100):
+        if window:
+            self.cam.StartX = self.cam.CameraXSize // 2 - nx // 2
+            self.cam.StartY = self.cam.CameraYSize // 2 - ny // 2
+            self.cam.NumX = nx
+            self.cam.NumY = ny
+            self.Log("Windowing On")
+        else:
+            self.cam.StartX = 0
+            self.cam.StartY = 0
+            self.cam.NumX = self.cam.CameraXSize - 1
+            self.cam.NumY = self.cam.CameraYSize - 1
+            self.Log("Windowing Off")
 
     def SetExpTime(self, exptime):
         with self.exptime_lock:
             self.exptime = exptime
-
+            
     def GetExpTime(self):
         with self.exptime_lock:
             return self.exptime

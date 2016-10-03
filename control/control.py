@@ -23,6 +23,8 @@ import traceback
 # simulate obtaining images for testing
 simulate = False
 debug = True
+enable_guider = False
+enable_windowing = False
 
 if not simulate:
     # http://www.ascom-standards.org/Help/Developer/html/N_ASCOM_DeviceInterface.htm
@@ -50,8 +52,9 @@ class Control(wx.Frame):
         self.Bind(EVT_IMAGEREADY_MAIN, self.panel.OnImageReady)
         self.Bind(EVT_SOLUTIONREADY, self.panel.OnSolutionReady)
         self.Show(True)
-        self.guider = Guider(self)
-        self.guider.Hide()
+        if enable_guider:
+            self.guider = Guider(self)
+            self.guider.Hide()
 
     def __DoLayout(self):
         self.InitMenuBar()
@@ -69,7 +72,8 @@ class Control(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnQuit, fitem)
 
     def OnQuit(self, e):
-        self.guider.OnExit(None)
+        if enable_guider:
+            self.guider.OnExit(None)
         time.sleep(1)
         self.panel.OnQuit(None)
         wx.CallLater(1000, self.Destroy)
@@ -287,7 +291,7 @@ class ControlPanel(wx.Panel):
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Exp.Time'),
                        flag=wx.RIGHT, border=5)
-        self.ExpTimeCtrl = wx.TextCtrl(panel, size=(50,-1),)
+        self.ExpTimeCtrl = wx.TextCtrl(panel, size=(50,-1))
         self.ExpTimeCtrl.ChangeValue('{:.3f}'.format(self.default_exptime))
         self.ExpTimeCtrl.SetToolTip(wx.ToolTip(
             'Exposure time for science image, or initial exposure '
@@ -300,7 +304,7 @@ class ControlPanel(wx.Panel):
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Num.Exp.'),
                        flag=wx.RIGHT, border=5)
-        self.NumExpCtrl = wx.TextCtrl(panel, size=(50,-1),)
+        self.NumExpCtrl = wx.TextCtrl(panel, size=(50,-1))
         self.NumExpCtrl.ChangeValue('{:d}'.format(self.default_numexp))
         self.NumExpCtrl.SetToolTip(wx.ToolTip(
             'Number of exposures (subject to minimum of ' +
@@ -309,6 +313,18 @@ class ControlPanel(wx.Panel):
         subBox.Add(self.NumExpCtrl)
         box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
 
+        if enable_windowing:
+            subBox = wx.BoxSizer(wx.HORIZONTAL)
+            subBox.Add(wx.StaticText(panel, label='Windowing'),
+                           flag=wx.RIGHT, border=5)
+            self.WindowCtrl = wx.CheckBox(panel)
+            self.WindowCtrl.SetValue(False)
+            self.WindowCtrl.Bind(wx.EVT_CHECKBOX, self.UpdateWindowing)
+            self.WindowCtrl.SetToolTip(wx.ToolTip(
+                'Limit to central region (for focussing, etc.)'))
+            subBox.Add(self.WindowCtrl)
+            box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
+        
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
 
@@ -323,13 +339,13 @@ class ControlPanel(wx.Panel):
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
 
-        self.GuiderButton = wx.Button(panel, label='Show Guider')
-        self.GuiderButton.Bind(wx.EVT_BUTTON, self.ToggleGuider)
-        self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
-        box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
-
-        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
-                border=10)
+        if enable_guider:
+            self.GuiderButton = wx.Button(panel, label='Show Guider')
+            self.GuiderButton.Bind(wx.EVT_BUTTON, self.ToggleGuider)
+            self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
+            box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
+            box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+                    border=10)
 
         self.ResetDS9Button = wx.Button(panel, label='Reset DS9')
         self.ResetDS9Button.Bind(wx.EVT_BUTTON, self.InitDS9)
@@ -397,6 +413,10 @@ class ControlPanel(wx.Panel):
             self.tel_position = None
             self.tel_ra.SetLabel('Tel. RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
+            
+    def UpdateWindowing(self, e):
+        if self.ImageTaker is not None:
+            self.ImageTaker.SetWindowing(self.WindowCtrl.GetValue())
 
     def InitLog(self, panel, box):
         self.logger = wx.TextCtrl(panel, size=(600,100),
@@ -675,9 +695,9 @@ class ControlPanel(wx.Panel):
                     self.CheckForAbort()
                     self.Log('Taken exposure {:d}'.format(i+1))
                     # TESTING!!!
-                    fullfilename = os.path.join(self.images_root_path, 'solve',
-                                                'test.fits')
-                    self.image = pyfits.getdata(fullfilename)
+                    #fullfilename = os.path.join(self.images_root_path, 'solve',
+                    #                            'test.fits')
+                    #self.image = pyfits.getdata(fullfilename)
                     self.SaveImage()
                     self.Reduce()
                     self.SaveRGBImages()
@@ -737,9 +757,9 @@ class ControlPanel(wx.Panel):
                 self.CheckForAbort()
                 self.Log('Acquisition exposure taken')
                 # TESTING!!!
-                fullfilename = os.path.join(self.images_root_path, 'solve',
-                                            'test.fits')
-                self.image = pyfits.getdata(fullfilename)
+                #fullfilename = os.path.join(self.images_root_path, 'solve',
+                #                            'test.fits')
+                #self.image = pyfits.getdata(fullfilename)
                 self.SaveImage('acq')
                 self.Reduce()
                 self.SaveRGBImages('acq')
@@ -972,19 +992,27 @@ class ControlPanel(wx.Panel):
             self.ast_dec.SetLabel('Dec:  ' + dec)
             self.wcs = pyfits.getheader(os.path.join(self.images_root_path,
                                                      'solve', 'solve.wcs'))
-            self.UpdateFileWCS(event.filenames)
         else:
             message = 'Astrometry for image taken {}: failed'
             message = message.format(event.image_time)
+            self.wcs = None
         self.Log(message)
+        self.UpdateFileWCS(event.filenames)
 
     def UpdateFileWCS(self, filenames):
         if self.wcs is not None:
             filenames = [os.path.join(self.images_path, f) for f in filenames]
             for fn in filenames:
-                with pyfits.open(fn, mode='update') as f:
-                    f[0].header.update(self.wcs)
-                self.Log('Updated WCS of {}'.format(os.path.basename(fn)))
+                for attempt in range(3):
+                    # try several times as might be being accessed by DS9
+                    try:
+                        with pyfits.open(fn, mode='update') as f:
+                            f[0].header.update(self.wcs)
+                    except WindowsError:
+                        time.sleep(3)
+                    else:
+                        self.Log('Updated WCS of {}'.format(os.path.basename(fn)))
+                        break
 
     def ToggleGuider(self, e):
         if self.main.guider.IsShown():
