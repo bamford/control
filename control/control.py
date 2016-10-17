@@ -324,7 +324,7 @@ class ControlPanel(wx.Panel):
                 'Limit to central region (for focussing, etc.)'))
             subBox.Add(self.WindowCtrl)
             box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
-        
+
         box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
                 border=10)
 
@@ -383,12 +383,50 @@ class ControlPanel(wx.Panel):
         subBox.Add((20, -1))
         self.ast_dec = wx.StaticText(panel)
         subBox.Add(self.ast_dec)
+        subBox.Add((20, -1))
+        self.SyncButton = wx.Button(panel, label='Sync and Offset')
+        self.SyncButton.Bind(wx.EVT_BUTTON,
+                             self.SyncToAstrometryAndOffsetTelescope)
+        self.SyncButton.SetToolTip(wx.ToolTip(
+            'Sync telescope position to astrometry and '
+            'offset to original target position'))
+        self.SyncButton.Disable()
+        subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
+                   border=10)
+        box.Add(subBox, 0)
+        box.Add((-1, 10))
+        # Target entry
+        subBox = wx.BoxSizer(wx.HORIZONTAL)
+        subBox.Add(wx.StaticText(panel, label="Target:", size=(100,-1)))
+        subBox.Add((20, -1))
+        self.TargetRACtrl = wx.TextCtrl(panel, size=(150,-1))
+        self.TargetRACtrl.ChangeValue('00h00m00s')
+        self.TargetRACtrl.SetToolTip(wx.ToolTip(
+            'Target RA in format 00h00m00s'))
+        subBox.Add(self.TargetRACtrl)
+        subBox.Add((20, -1))
+        self.TargetDecCtrl = wx.TextCtrl(panel, size=(150,-1))
+        self.TargetDecCtrl.ChangeValue('00h00m00s')
+        self.TargetDecCtrl.SetToolTip(wx.ToolTip(
+            'Target Dec in format 00d00m00s'))
+        subBox.Add(self.TargetRACtrl)
+        subBox.Add((20, -1))
+        self.SlewButton = wx.Button(panel, label='Slew to Target')
+        self.SlewButton.Bind(wx.EVT_BUTTON,
+                             self.SlewTelescope)
+        self.SlewButton.SetToolTip(wx.ToolTip(
+            'Slew telescope to given target position'))
+        self.SlewButton.Enable()
+        self.WorkButtons.append(SlewButton)
+        subBox.Add(self.SlewButton, flag=wx.wx.EXPAND|wx.ALL,
+                   border=10)
         box.Add(subBox, 0)
         self.UpdateInfo(None)
 
     def UpdateInfo(self, event):
         self.UpdateTime()
         self.UpdatePosition()
+        self.UpdateAstrometry()
 
     def UpdateTime(self):
         now = datetime.utcnow()
@@ -400,6 +438,7 @@ class ControlPanel(wx.Panel):
             self.tel_time.SetLabel('Tel. time:  not available')
 
     def UpdatePosition(self):
+        # TODO: check self.tel.EquatorialSystem
         if self.tel is not None:
             c = coord.SkyCoord(ra=self.tel.RightAscension,
                                dec=self.tel.Declination,
@@ -413,7 +452,19 @@ class ControlPanel(wx.Panel):
             self.tel_position = None
             self.tel_ra.SetLabel('Tel. RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
-            
+
+    def UpdateAstrometry(self):
+        if self.ast_position is not None:
+            ra = self.ast_position.ra.to_string(u.hour, precision=1, pad=True)
+            dec = self.ast_position.dec.to_string(u.degree, precision=1, pad=True,
+                                                  alwayssign=True)
+            self.ast_ra.SetLabel('RA:  ' + ra)
+            self.ast_dec.SetLabel('Dec:  ' + dec)
+        else:
+            self.ast_ra.SetLabel('None')
+            self.ast_dec.SetLabel('')
+
+
     def UpdateWindowing(self, e):
         if self.ImageTaker is not None:
             self.ImageTaker.SetWindowing(self.WindowCtrl.GetValue())
@@ -483,6 +534,8 @@ class ControlPanel(wx.Panel):
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
             button.Enable()
+        if self.ast_position is not None:
+            self.SyncButton.Enable()
 
     def DisableWorkButtons(self):
         for button in self.WorkButtons:
@@ -832,6 +885,38 @@ class ControlPanel(wx.Panel):
             self.Log("No flatfield correction")
             return False
 
+    def SlewTelescope(self, event):
+        try:
+            ra_str = self.TargetRACtrl.GetValue()
+            dec_str = self.TargetDecCtrl.GetValue()
+            target = coord.SkyCoord(ra_str, dec_str, frame='icrs')
+            ra_str = target.ra.to_string(u.hour, precision=1, pad=True)
+            dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
+                                           alwayssign=True)
+            self.TargetRACtrl.ChangeValue(ra_str)
+            self.TargetRACtrl.ChangeValue(dec_str)
+            self.Log('Slewing to {} {}'.format(ra_str, dec_str))
+            self.tel.TargetRightAscension = target.ra.hour
+            self.tel.TargetDeclination = target.dec.deg
+            self.tel.SlewToTarget()
+            self.ast_position = None
+        except:
+            self.Log('Target coordinates not recognised')
+
+    def SyncToAstrometryAndOffsetTelescope(self, event):
+        if self.tel is not None and self.ast_position is not None:
+            ra = self.tel.RightAscension
+            dec = self.tel.Declination
+            self.tel.SyncToCoordinates(self.ast_position.ra.hour,
+                                       self.ast_position.dec.deg)
+            self.Log('Syncing telescope to astrometry')
+            self.tel.TargetRightAscension = ra
+            self.tel.TargetDeclination = dec
+            self.tel.SlewToTarget()
+            self.Log('Telescope offset to original target position')
+        else:
+            self.Log('NOT syncing telescope to astrometry')
+
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
@@ -985,11 +1070,6 @@ class ControlPanel(wx.Panel):
                                dec=event.solution.center.dec,
                                unit=(u.degree, u.degree), frame='icrs')
             self.ast_position = c
-            ra = c.ra.to_string(u.hour, precision=1, pad=True)
-            dec = c.dec.to_string(u.degree, precision=1, pad=True,
-                                  alwayssign=True)
-            self.ast_ra.SetLabel('RA:  ' + ra)
-            self.ast_dec.SetLabel('Dec:  ' + dec)
             self.wcs = pyfits.getheader(os.path.join(self.images_root_path,
                                                      'solve', 'solve.wcs'))
         else:
