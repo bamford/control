@@ -98,6 +98,7 @@ class ControlPanel(wx.Panel):
         self.bias = None
         self.flat = None
         self.samp_client = None
+        self.ast_position = None
         # initialisations
         self.InitPaths()
         self.InitPanel()
@@ -370,7 +371,7 @@ class ControlPanel(wx.Panel):
         self.tel_ra = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.tel_ra)
         subBox.Add((20, -1))
-        self.tel_dec = wx.StaticText(panel)
+        self.tel_dec = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.tel_dec)
         box.Add(subBox, 0)
         box.Add((-1, 10))
@@ -381,7 +382,7 @@ class ControlPanel(wx.Panel):
         self.ast_ra = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.ast_ra)
         subBox.Add((20, -1))
-        self.ast_dec = wx.StaticText(panel)
+        self.ast_dec = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.ast_dec)
         subBox.Add((20, -1))
         self.SyncButton = wx.Button(panel, label='Sync and Offset')
@@ -392,7 +393,7 @@ class ControlPanel(wx.Panel):
             'offset to original target position'))
         self.SyncButton.Disable()
         subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
-                   border=10)
+                   border=0)
         box.Add(subBox, 0)
         box.Add((-1, 10))
         # Target entry
@@ -409,7 +410,7 @@ class ControlPanel(wx.Panel):
         self.TargetDecCtrl.ChangeValue('00h00m00s')
         self.TargetDecCtrl.SetToolTip(wx.ToolTip(
             'Target Dec in format 00d00m00s'))
-        subBox.Add(self.TargetRACtrl)
+        subBox.Add(self.TargetDecCtrl)
         subBox.Add((20, -1))
         self.SlewButton = wx.Button(panel, label='Slew to Target')
         self.SlewButton.Bind(wx.EVT_BUTTON,
@@ -417,9 +418,9 @@ class ControlPanel(wx.Panel):
         self.SlewButton.SetToolTip(wx.ToolTip(
             'Slew telescope to given target position'))
         self.SlewButton.Enable()
-        self.WorkButtons.append(SlewButton)
+        self.WorkButtons.append(self.SlewButton)
         subBox.Add(self.SlewButton, flag=wx.wx.EXPAND|wx.ALL,
-                   border=10)
+                   border=0)
         box.Add(subBox, 0)
         self.UpdateInfo(None)
 
@@ -894,7 +895,7 @@ class ControlPanel(wx.Panel):
             dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
                                            alwayssign=True)
             self.TargetRACtrl.ChangeValue(ra_str)
-            self.TargetRACtrl.ChangeValue(dec_str)
+            self.TargetDecCtrl.ChangeValue(dec_str)
             self.Log('Slewing to {} {}'.format(ra_str, dec_str))
             self.tel.TargetRightAscension = target.ra.hour
             self.tel.TargetDeclination = target.dec.deg
@@ -902,6 +903,7 @@ class ControlPanel(wx.Panel):
             self.ast_position = None
         except:
             self.Log('Target coordinates not recognised')
+            traceback.print_exc()
 
     def SyncToAstrometryAndOffsetTelescope(self, event):
         if self.tel is not None and self.ast_position is not None:
