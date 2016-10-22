@@ -42,9 +42,11 @@ class SolverThread(threading.Thread):
         self.solver.timeout = self.timeout
         self.solver.setProperty('downscale', 2)
         self.solver.setProperty('xtra', '--depth 20 --no-plots '
-                                        '-N none --overwrite '
-                                        '--scale-units arcsecperpix '
-                                        '--scale-low 0.45 --scale-high 0.65')
+                                        '-N none --overwrite')
+        self.solver.setProperty('scale_low', 0.45)
+        self.solver.setProperty('scale_max', 0.65)
+        self.solver.setProperty('scale_units', 'arcsecperpix')
+        self.solver.setProperty('searchradius', 5.0)
         try:
             while True:
                 incoming = self.incoming.get()
@@ -52,17 +54,18 @@ class SolverThread(threading.Thread):
                     break
                 filters, fn, image_time, filenames, position = incoming
                 self.CreateSolveImage(filters, fn)
-                kwargs = {'minFov': 0.25, 'maxFov': 0.5,
-                          'targetRadius': 5}
                 if position is not None:
-                    target = Coordinate(position.ra.deg, position.dec.deg)                    
-                    kwargs['target'] = target
-                solution = self.solver.solve(fn, callback=self.Log,
-                                             **kwargs)
-                if solution is None:
-                    del kwargs['target']
-                    solution = self.solver.solve(fn, callback=self.Log,
-                                                 **kwargs)
+                    target = Coordinate(position.ra.deg, position.dec.deg)
+                else:
+                    target = None
+                solution = self.solver.solve(fn, target=target,
+                                             callback=self.Log)
+                if solution is None and target is not None:
+                    self.solver.setProperty('xtra',
+                                            self.solver.getProperty('xtra') +
+                                            ' --no-fits2fits --continue')
+                    solution = self.solver.solve(fn.replace('.fits', '.axy'),
+                                                 callback=self.Log)
                 wx.PostEvent(self.parent,
                              SolutionReadyEvent(solution=solution,
                                             image_time=image_time,
@@ -82,7 +85,7 @@ class SolverThread(threading.Thread):
         except:
             pass
             #self.Log('logging error')
-            
+
     def CreateSolveImage(self, filters, filename):
         self.Log('Filtering image for astrometry')
         image = filters.sum(0)
