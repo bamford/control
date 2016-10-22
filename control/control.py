@@ -99,6 +99,8 @@ class ControlPanel(wx.Panel):
         self.flat = None
         self.samp_client = None
         self.ast_position = None
+        self.wcs = None
+        self.last_telescope_move = datetime.utcnow()
         # initialisations
         self.InitPaths()
         self.InitPanel()
@@ -444,6 +446,8 @@ class ControlPanel(wx.Panel):
             c = coord.SkyCoord(ra=self.tel.RightAscension,
                                dec=self.tel.Declination,
                                unit=(u.hour, u.degree), frame='icrs')
+            if c.separation(self.tel_position).arcsecond > 1:
+                self.last_telescope_move = datetime.utcnow()
             self.tel_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
             dec = c.dec.to_string(u.degree, precision=1, pad=True, alwayssign=True)
@@ -455,15 +459,20 @@ class ControlPanel(wx.Panel):
             self.tel_dec.SetLabel('Dec:  not available')
 
     def UpdateAstrometry(self):
+        if self.last_telescope_move > event.image_time:
+            self.ast_position = None
+            self.wcs = None
         if self.ast_position is not None:
             ra = self.ast_position.ra.to_string(u.hour, precision=1, pad=True)
             dec = self.ast_position.dec.to_string(u.degree, precision=1, pad=True,
                                                   alwayssign=True)
             self.ast_ra.SetLabel('RA:  ' + ra)
             self.ast_dec.SetLabel('Dec:  ' + dec)
+            self.SyncButton.Enable()
         else:
             self.ast_ra.SetLabel('None')
             self.ast_dec.SetLabel('')
+            self.SyncButton.Disable()
 
 
     def UpdateWindowing(self, e):
@@ -537,10 +546,13 @@ class ControlPanel(wx.Panel):
             button.Enable()
         if self.ast_position is not None:
             self.SyncButton.Enable()
+        else:
+            self.SyncButton.Disable()
 
     def DisableWorkButtons(self):
         for button in self.WorkButtons:
             button.Disable()
+        self.SyncButton.Disable()
 
     def CheckForAbort(self):
         self.logger.Refresh()
@@ -909,13 +921,16 @@ class ControlPanel(wx.Panel):
         if self.tel is not None and self.ast_position is not None:
             ra = self.tel.RightAscension
             dec = self.tel.Declination
-            self.tel.SyncToCoordinates(self.ast_position.ra.hour,
-                                       self.ast_position.dec.deg)
-            self.Log('Syncing telescope to astrometry')
-            self.tel.TargetRightAscension = ra
-            self.tel.TargetDeclination = dec
-            self.tel.SlewToTarget()
-            self.Log('Telescope offset to original target position')
+            if self.tel_position.sep(self.ast_position).degree < 5:
+                self.tel.SyncToCoordinates(ast_ra,
+                                           self.ast_position.dec.deg)
+                self.Log('Syncing telescope to astrometry')
+                self.tel.TargetRightAscension = ra
+                self.tel.TargetDeclination = dec
+                self.tel.SlewToTarget()
+                self.Log('Telescope offset to original target position')
+            else:
+                self.Log('Refusing to sync: offset > 5 deg')
         else:
             self.Log('NOT syncing telescope to astrometry')
 
@@ -1003,10 +1018,9 @@ class ControlPanel(wx.Panel):
             name = self.image_time.strftime('%Y-%m-%d_%H-%M-%S')
         if imtype is not None:
             name += '_{}'.format(imtype)
-        if self.wcs is not None:
-            header = self.wcs
-        else:
-            header = None
+        # Could use the current (approximate) wcs, but can lead to confusion
+        #header = self.wcs if self.wcs is not None else None
+        header = None
         if (filters or filtersum) is False:
             filename = name+'.fits'
             self.filename = filename
@@ -1063,7 +1077,6 @@ class ControlPanel(wx.Panel):
                          self.image_tel_position))
 
     def OnSolutionReady(self, event):
-        # TODO: determine (and apply?) pointing correction
         if event.solution is not None:
             message = 'Astrometry for image taken {}:\n{}'
             message = message.format(event.image_time,
@@ -1072,24 +1085,28 @@ class ControlPanel(wx.Panel):
                                dec=event.solution.center.dec,
                                unit=(u.degree, u.degree), frame='icrs')
             self.ast_position = c
-            self.wcs = pyfits.getheader(os.path.join(self.images_root_path,
+            wcs = pyfits.getheader(os.path.join(self.images_root_path,
                                                      'solve', 'solve.wcs'))
+            if self.last_telescope_move <= event.image_time:
+                self.wcs = wcs
+            else:
+                self.wcs = None
         else:
             message = 'Astrometry for image taken {}: failed'
             message = message.format(event.image_time)
-            self.wcs = None
+            wcs = None
         self.Log(message)
-        self.UpdateFileWCS(event.filenames)
+        self.UpdateFileWCS(event.filenames, wcs)
 
-    def UpdateFileWCS(self, filenames):
-        if self.wcs is not None:
+    def UpdateFileWCS(self, filenames, wcs):
+        if wcs is not None:
             filenames = [os.path.join(self.images_path, f) for f in filenames]
             for fn in filenames:
                 for attempt in range(3):
                     # try several times as might be being accessed by DS9
                     try:
                         with pyfits.open(fn, mode='update') as f:
-                            f[0].header.update(self.wcs)
+                            f[0].header.update(wcs)
                     except WindowsError:
                         time.sleep(3)
                     else:
