@@ -902,19 +902,23 @@ class ControlPanel(wx.Panel):
         try:
             ra_str = self.TargetRACtrl.GetValue()
             dec_str = self.TargetDecCtrl.GetValue()
-            target = coord.SkyCoord(ra_str, dec_str, frame='icrs')
-            ra_str = target.ra.to_string(u.hour, precision=1, pad=True)
-            dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
-                                           alwayssign=True)
-            self.TargetRACtrl.ChangeValue(ra_str)
-            self.TargetDecCtrl.ChangeValue(dec_str)
-            self.Log('Slewing to {} {}'.format(ra_str, dec_str))
-            self.tel.TargetRightAscension = target.ra.hour
-            self.tel.TargetDeclination = target.dec.deg
-            self.tel.SlewToTarget()
-            self.ast_position = None
+            target = coord.SkyCoord(ra_str, dec_str)
         except:
             self.Log('Target coordinates not recognised')
+            traceback.print_exc()
+        ra_str = target.ra.to_string(u.hour, precision=1, pad=True)
+        dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
+                                       alwayssign=True)
+        self.TargetRACtrl.ChangeValue(ra_str)
+        self.TargetDecCtrl.ChangeValue(dec_str)
+        self.Log('Slewing to {} {}'.format(ra_str, dec_str))
+        self.tel.TargetRightAscension = target.ra.hour
+        self.tel.TargetDeclination = target.dec.deg
+        self.ast_position = None
+        try:
+            self.tel.SlewToTarget()
+        except:
+            self.Log('Slew failed')
             traceback.print_exc()
 
     def SyncToAstrometryAndOffsetTelescope(self, event):
