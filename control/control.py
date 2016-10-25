@@ -87,15 +87,21 @@ class ControlPanel(wx.Panel):
         # configuration:
         self.default_exptime = 1.0
         self.default_numexp = 1
-        self.min_nbias = 3
+        self.min_nbias = 5
         self.min_nflat = 3
+        self.min_ndark = 5
+        self.min_darktime = 5.0
         self.max_ncontinuous = 100
+        # do not subtract more dark than this
+        # (to avoid oversubtracting saturated hot pixels):
+        self.maxdark = 22500
         self.flat_offset = (10.0, 10.0)
         self.readout_time = 3.0
         self.images_root_path = "C:/Users/lab_user/Dropbox/control/"
         # special objects:
         self.tel = None
         self.bias = None
+        self.dark = None
         self.flat = None
         self.samp_client = None
         self.ast_position = None
@@ -202,20 +208,44 @@ class ControlPanel(wx.Panel):
         self.solver.set(None)
         time.sleep(0.1)
 
-    def LoadCalibrations(self):
-        # look for existing masterbias and masterflat images
-        mb = glob(os.path.join(self.images_path, '*masterbias.fits'))
-        if len(mb) > 0:
-            mb.sort()
-            mb = mb[-1]
-            self.bias = np.asarray(pyfits.getdata(mb))
-            self.Log('Loaded masterbias: {}'.format(os.path.basename(mb)))
-        mf = glob(os.path.join(self.images_path, '*masterflat.fits'))
-        if len(mf) > 0:
-            mf.sort()
-            mf = mf[-1]
-            self.flat = np.asarray(pyfits.getdata(mf))
-            self.Log('Loaded masterflat: {}'.format(os.path.basename(mf)))
+    def LoadCalibrations(self, fallback=False):
+        # look for existing masterbias, masterdark and masterflat images
+        if fallback:
+            path = os.path.join(self.images_root_path, '*')
+        else:
+            path = self.images_path
+        if self.bias is None:
+            mb = glob(os.path.join(path, '*masterbias.fits'))
+            if len(mb) > 0:
+                mb.sort()
+                mb = mb[-1]
+                self.bias = np.asarray(pyfits.getdata(mb))
+                if fallback:
+                    self.Log('Loaded OLD masterbias: {}'.format(os.path.basename(mb)))
+                else:
+                    self.Log('Loaded masterbias: {}'.format(os.path.basename(mb)))
+        if self.dark is None:
+            md = glob(os.path.join(path, '*masterdark.fits'))
+            if len(md) > 0:
+                md.sort()
+                md = mb[-1]
+                self.dark = np.asarray(pyfits.getdata(mb))
+                if fallback:
+                    self.Log('Loaded OLD masterdark: {}'.format(os.path.basename(md)))
+                else:
+                    self.Log('Loaded masterdark: {}'.format(os.path.basename(md)))
+        if self.flat is None:
+            mf = glob(os.path.join(path, '*masterflat.fits'))
+            if len(mf) > 0:
+                mf.sort()
+                mf = mf[-1]
+                self.flat = np.asarray(pyfits.getdata(mf))
+                if fallback:
+                    self.Log('Loaded OLD masterflat: {}'.format(os.path.basename(mf)))
+                else:
+                    self.Log('Loaded masterflat: {}'.format(os.path.basename(mf)))
+        if not fallback:
+            self.LoadCalibrations(fallback=True)
 
     def InitPanel(self):
         MainBox = wx.BoxSizer(wx.HORIZONTAL)
@@ -257,6 +287,13 @@ class ControlPanel(wx.Panel):
         BiasButton.SetToolTip(wx.ToolTip(
             'Take a set of bias images and store a master bias'))
         box.Add(BiasButton, flag=wx.EXPAND|wx.ALL, border=10)
+
+        DarkButton = wx.Button(panel, label='Take dark images')
+        DarkButton.Bind(wx.EVT_BUTTON, self.TakeDark)
+        self.WorkButtons.append(DarkButton)
+        DarkButton.SetToolTip(wx.ToolTip(
+            'Take a set of dark images and store a master dark'))
+        box.Add(DarkButton, flag=wx.EXPAND|wx.ALL, border=10)
 
         FlatButton = wx.Button(panel, label='Take flat images')
         FlatButton.Bind(wx.EVT_BUTTON, self.TakeFlat)
@@ -310,9 +347,7 @@ class ControlPanel(wx.Panel):
         self.NumExpCtrl = wx.TextCtrl(panel, size=(50,-1))
         self.NumExpCtrl.ChangeValue('{:d}'.format(self.default_numexp))
         self.NumExpCtrl.SetToolTip(wx.ToolTip(
-            'Number of exposures (subject to minimum of ' +
-            '{:d} for biases and '.format(self.min_nbias) +
-            '{:d} for flats)'.format(self.min_nflat)))
+            'Number of exposures (subject to minima for calibrations)'))
         subBox.Add(self.NumExpCtrl)
         box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
 
@@ -627,7 +662,6 @@ class ControlPanel(wx.Panel):
             self.TakeWorker(self.TakeBiasWorker)
 
     def TakeBiasWorker(self):
-        # Popup to check cover on?
         nbias = self.GetNumExp()
         if nbias is None or nbias < self.min_nbias:
             nbias = self.min_nbias
@@ -652,7 +686,6 @@ class ControlPanel(wx.Panel):
                 self.CheckForAbort()
                 self.bias = self.image
                 self.SaveImage('masterbias')
-                #self.SaveRGBImages('masterbias')
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Bias images aborted')
@@ -661,6 +694,50 @@ class ControlPanel(wx.Panel):
                 traceback.print_exc()
             else:
                 self.Log('Bias images done')
+            self.StopWorking()
+
+    def TakeDark(self, e):
+        if self.CheckReadyForBias():
+            self.TakeWorker(self.TakeDarkWorker)
+
+    def TakeDarkWorker(self):
+        ndark = self.GetNumExp()
+        darktime = self.GetExpTime()
+        if ndark is None or (ndark < self.min_ndark and darktime < self.min_darktime):
+            ndark = self.min_ndark
+        if darktime is None or darktime < self.min_darktime:
+            darktime = self.min_darktime
+        if self.StartWorking():
+            self.Log('### Taking {:d} dark images of {:.3f} sec...'.format(ndark, darktime))
+            try:
+                for i in range(ndark):
+                    self.Log('Starting dark {:d}'.format(i+1))
+                    self.CheckForAbort()
+                    self.TakeImage(exptime=t)
+                    yield
+                    self.CheckForAbort()
+                    self.Log('Taken dark {:d}'.format(i+1))
+                    self.SaveImage('dark')
+                    self.CheckForAbort()
+                    if i==0:
+                        dark_stack = np.zeros((ndark,)+self.image.shape,
+                                              self.image.dtype)
+                    ok = self.BiasSubtract()
+                    if not ok:
+                        raise ControlError('Cannot create dark without bias')
+                    dark_stack[i] = self.image
+                    self.CheckForAbort()
+                self.ProcessDark(dark_stack, darktime)
+                self.dark = self.image
+                self.SaveImage('masterdark')
+            except ControlAbortError:
+                self.need_abort = False
+                self.Log('Dark images aborted')
+            except Exception as detail:
+                self.Log('Dark images error:\n{}'.format(detail))
+                traceback.print_exc()
+            else:
+                self.Log('Dark images done')
             self.StopWorking()
 
     def TakeFlat(self, e):
@@ -702,6 +779,7 @@ class ControlPanel(wx.Panel):
                         ok = self.BiasSubtract()
                         if not ok:
                             raise ControlError('Cannot create flat without bias')
+                        self.DarkSubtract(exptime)
                         self.SaveRGBImages('flat')
                         self.DisplayRGBImage()
                         flat_stack[i] = self.image
@@ -765,7 +843,7 @@ class ControlPanel(wx.Panel):
                     #                            'test.fits')
                     #self.image = pyfits.getdata(fullfilename)
                     self.SaveImage()
-                    self.Reduce()
+                    self.Reduce(exptime)
                     self.SaveRGBImages()
                     self.GetAstrometry()
                     self.DisplayRGBImage()
@@ -795,7 +873,7 @@ class ControlPanel(wx.Panel):
                     yield
                     self.CheckForAbort()
                     self.SaveImage(name='continuous')
-                    #self.Reduce()
+                    #self.Reduce(exptime)
                     #self.SaveRGBImages(name='continuous')
                     #self.DisplayRGBImage()
             except ControlAbortError:
@@ -827,7 +905,7 @@ class ControlPanel(wx.Panel):
                 #                            'test.fits')
                 #self.image = pyfits.getdata(fullfilename)
                 self.SaveImage('acq')
-                self.Reduce()
+                self.Reduce(exptime)
                 self.SaveRGBImages('acq')
                 self.GetAstrometry()
                 self.DisplayRGBImage()
@@ -861,14 +939,24 @@ class ControlPanel(wx.Panel):
             self.NumExpCtrl.ChangeValue('{:d}'.format(self.default_numexp))
         return numexp
 
-    def Reduce(self):
+    def Reduce(self, exptime):
         self.BiasSubtract()
+        self.DarkSubtract(exptime)
         self.Flatfield()
 
     def ProcessBias(self, stack):
         self.Log("Creating master bias")
         # Take the median through the stack to produce masterbias
         self.image = np.median(stack, axis=0)
+
+    def ProcessDark(self, stack, darktime):
+        self.Log("Creating master dark")
+        # Take the median through the  stack and divide by
+        #  exposure time to produce dark
+        # (counts per second assuming constant linear response)
+        dark_base = np.median(stack, axis=0)
+        dark_base /= darktime
+        self.image = dark_base
 
     def ProcessFlat(self, stack):
         self.Log("Creating master flat")
@@ -887,6 +975,17 @@ class ControlPanel(wx.Panel):
             return True
         else:
             self.Log("No bias correction")
+            return False
+
+    def DarkSubtract(self, exptime):
+        if self.dark is not None:
+            dark = self.dark * exptime
+            dark[dark > self.maxdark] = self.maxdark
+            self.image = self.image - dark
+            self.Log("Subtracting dark")
+            return True
+        else:
+            self.Log("No dark correction")
             return False
 
     def Flatfield(self):
@@ -1015,6 +1114,7 @@ class ControlPanel(wx.Panel):
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
         self.SaveImage(imtype, name, filters=True)
+        #self.SaveJpeg(imtype, name)
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
