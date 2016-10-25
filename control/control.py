@@ -105,7 +105,9 @@ class ControlPanel(wx.Panel):
         self.flat = None
         self.samp_client = None
         self.ast_position = None
+        self.tel_position = None
         self.wcs = None
+        self.image_time = None
         self.last_telescope_move = datetime.utcnow()
         # initialisations
         self.InitPaths()
@@ -122,6 +124,7 @@ class ControlPanel(wx.Panel):
         self.InitSolver()
         wx.Yield()
         self.LoadCalibrations()
+        self.UpdateInfoTimer.Start(1000) # 1 second interval
 
     def InitCamera(self):
         self.stop_camera = threading.Event()
@@ -261,7 +264,6 @@ class ControlPanel(wx.Panel):
         feedbackbox.Add(InfoBox, 1, flag=wx.EXPAND)
         self.UpdateInfoTimer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
-        self.UpdateInfoTimer.Start(1000) # 1 second interval
         #sb = wx.StaticBox(self, label="Image")
         #ImageBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         #feedbackbox.Add(ImageBox, 2, flag=wx.EXPAND)
@@ -444,9 +446,9 @@ class ControlPanel(wx.Panel):
         subBox.Add(self.TargetRACtrl)
         subBox.Add((20, -1))
         self.TargetDecCtrl = wx.TextCtrl(panel, size=(150,-1))
-        self.TargetDecCtrl.ChangeValue('00h00m00s')
+        self.TargetDecCtrl.ChangeValue('+90d00m00s')
         self.TargetDecCtrl.SetToolTip(wx.ToolTip(
-            'Target Dec in format 00d00m00s'))
+            'Target Dec in format +00d00m00s'))
         subBox.Add(self.TargetDecCtrl)
         subBox.Add((20, -1))
         self.SlewButton = wx.Button(panel, label='Slew to Target')
@@ -481,8 +483,9 @@ class ControlPanel(wx.Panel):
             c = coord.SkyCoord(ra=self.tel.RightAscension,
                                dec=self.tel.Declination,
                                unit=(u.hour, u.degree), frame='icrs')
-            if c.separation(self.tel_position).arcsecond > 1:
-                self.last_telescope_move = datetime.utcnow()
+            if self.tel_position is not None:
+                if c.separation(self.tel_position).arcsecond > 1:
+                    self.last_telescope_move = datetime.utcnow()
             self.tel_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
             dec = c.dec.to_string(u.degree, precision=1, pad=True, alwayssign=True)
@@ -494,7 +497,7 @@ class ControlPanel(wx.Panel):
             self.tel_dec.SetLabel('Dec:  not available')
 
     def UpdateAstrometry(self):
-        if self.last_telescope_move > event.image_time:
+        if self.image_time is None or self.last_telescope_move > self.image_time:
             self.ast_position = None
             self.wcs = None
         if self.ast_position is not None:
@@ -713,7 +716,7 @@ class ControlPanel(wx.Panel):
                 for i in range(ndark):
                     self.Log('Starting dark {:d}'.format(i+1))
                     self.CheckForAbort()
-                    self.TakeImage(exptime=t)
+                    self.TakeImage(darktime)
                     yield
                     self.CheckForAbort()
                     self.Log('Taken dark {:d}'.format(i+1))
