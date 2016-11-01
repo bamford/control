@@ -353,6 +353,18 @@ class ControlPanel(wx.Panel):
         subBox.Add(self.NumExpCtrl)
         box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
 
+        subBox = wx.BoxSizer(wx.HORIZONTAL)
+        subBox.Add(wx.StaticText(panel, label='Delay'),
+                       flag=wx.RIGHT, border=5)
+        self.DelaytimeCtrl = wx.TextCtrl(panel, size=(50,-1))
+        self.DelaytimeCtrl.ChangeValue('{:.0f}'.format(0))
+        self.DelaytimeCtrl.SetToolTip(wx.ToolTip(
+            'Optional delay between exposures'))
+        subBox.Add(self.DelaytimeCtrl)
+        subBox.Add(wx.StaticText(panel, label='sec'),
+                       flag=wx.LEFT, border=5)
+        box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
+
         if enable_windowing:
             subBox = wx.BoxSizer(wx.HORIZONTAL)
             subBox.Add(wx.StaticText(panel, label='Windowing'),
@@ -828,6 +840,7 @@ class ControlPanel(wx.Panel):
     def TakeScienceWorker(self):
         nexp = self.GetNumExp()
         exptime = self.GetExpTime()
+        delaytime = self.GetDelayTime()
         if nexp is None or exptime is None:
             self.Log('Science images not obtained')
         elif self.StartWorking():
@@ -851,6 +864,8 @@ class ControlPanel(wx.Panel):
                     self.GetAstrometry()
                     self.DisplayRGBImage()
                     self.CheckForAbort()
+                    self.Delay(delaytime)
+                    self.CheckForAbort()
             except ControlAbortError:
                 self.need_abort = False
                 self.Log('Science images aborted')
@@ -860,6 +875,16 @@ class ControlPanel(wx.Panel):
             else:
                 self.Log('Science images done')
             self.StopWorking()
+
+    def Delay(self, delaytime):
+        if delaytime > 0:
+            self.Log('Waiting {:f.1} sec'.format(delaytime))
+            delay = delaytime
+            while delay > 0:
+                self.CheckForAbort()
+                wx.Yield()
+                time.sleep(0.1)
+                delay -= delaytime
 
     def TakeContinuous(self, e):
         self.TakeWorker(self.TakeContinuousWorker)
@@ -931,6 +956,17 @@ class ControlPanel(wx.Panel):
                     '{:.3f} sec'.format(self.default_exptime))
             self.ExpTimeCtrl.ChangeValue('{:.3f}'.format(self.default_exptime))
         return exptime
+
+    def GetDelayTime(self):
+        try:
+            delaytime = float(self.DelayTimeCtrl.GetValue())
+            if delaytime < 0:
+                raise ValueError
+        except ValueError:
+            delaytime = 0
+            self.Log('Delay time invalid, setting to zero')
+            self.DelayTimeCtrl.ChangeValue('{:.0f}'.format(delaytime))
+        return delaytime
 
     def GetNumExp(self):
         try:
