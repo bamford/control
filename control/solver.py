@@ -63,8 +63,8 @@ class SolverThread(threading.Thread):
                 if solution is None and target is not None:
                     self.solver.setProperty('xtra',
                                             self.solver.getProperty('xtra') +
-                                            ' --no-fits2fits --continue')
-                    solution = self.solver.solve(fn.replace('.fits', '.axy'),
+                                            ' --continue')
+                    solution = self.solver.solve(fn,
                                                  callback=self.Log)
                 wx.PostEvent(self.parent,
                              SolutionReadyEvent(solution=solution,

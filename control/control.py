@@ -135,7 +135,7 @@ class ControlPanel(wx.Panel):
     def StopCamera(self):
         self.stop_camera.set()
         self.take_image.clear()
-        self.sleep(1)
+        time.sleep(1)
 
     def InitTelescope(self):
         if not simulate:
@@ -231,7 +231,7 @@ class ControlPanel(wx.Panel):
             md = glob(os.path.join(path, '*masterdark.fits'))
             if len(md) > 0:
                 md.sort()
-                md = mb[-1]
+                md = md[-1]
                 self.dark = np.asarray(pyfits.getdata(mb))
                 if fallback:
                     self.Log('Loaded OLD masterdark: {}'.format(os.path.basename(md)))
@@ -944,7 +944,7 @@ class ControlPanel(wx.Panel):
 
     def Reduce(self, exptime):
         self.BiasSubtract()
-        self.DarkSubtract(exptime)
+        #self.DarkSubtract(exptime)
         self.Flatfield()
 
     def ProcessBias(self, stack):
@@ -1027,8 +1027,8 @@ class ControlPanel(wx.Panel):
         if self.tel is not None and self.ast_position is not None:
             ra = self.tel.RightAscension
             dec = self.tel.Declination
-            if self.tel_position.sep(self.ast_position).degree < 5:
-                self.tel.SyncToCoordinates(ast_ra,
+            if self.tel_position.separation(self.ast_position).degree < 5:
+                self.tel.SyncToCoordinates(self.ast_position.ra.hour,
                                            self.ast_position.dec.deg)
                 self.Log('Syncing telescope to astrometry')
                 self.tel.TargetRightAscension = ra
