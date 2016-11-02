@@ -356,11 +356,11 @@ class ControlPanel(wx.Panel):
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Delay'),
                        flag=wx.RIGHT, border=5)
-        self.DelaytimeCtrl = wx.TextCtrl(panel, size=(50,-1))
-        self.DelaytimeCtrl.ChangeValue('{:.0f}'.format(0))
-        self.DelaytimeCtrl.SetToolTip(wx.ToolTip(
+        self.DelayTimeCtrl = wx.TextCtrl(panel, size=(50,-1))
+        self.DelayTimeCtrl.ChangeValue('{:.0f}'.format(0))
+        self.DelayTimeCtrl.SetToolTip(wx.ToolTip(
             'Optional delay between exposures'))
-        subBox.Add(self.DelaytimeCtrl)
+        subBox.Add(self.DelayTimeCtrl)
         subBox.Add(wx.StaticText(panel, label='sec'),
                        flag=wx.LEFT, border=5)
         box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
@@ -864,7 +864,8 @@ class ControlPanel(wx.Panel):
                     self.GetAstrometry()
                     self.DisplayRGBImage()
                     self.CheckForAbort()
-                    self.Delay(delaytime)
+                    if i < nexp - 1:
+                        self.Delay(delaytime)
                     self.CheckForAbort()
             except ControlAbortError:
                 self.need_abort = False
@@ -878,13 +879,13 @@ class ControlPanel(wx.Panel):
 
     def Delay(self, delaytime):
         if delaytime > 0:
-            self.Log('Waiting {:f.1} sec'.format(delaytime))
+            self.Log('Waiting {:.1f} sec'.format(delaytime))
             delay = delaytime
             while delay > 0:
                 self.CheckForAbort()
                 wx.Yield()
                 time.sleep(0.1)
-                delay -= delaytime
+                delay -= 0.1
 
     def TakeContinuous(self, e):
         self.TakeWorker(self.TakeContinuousWorker)
