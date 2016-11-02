@@ -232,7 +232,7 @@ class ControlPanel(wx.Panel):
             if len(md) > 0:
                 md.sort()
                 md = md[-1]
-                self.dark = np.asarray(pyfits.getdata(mb))
+                self.dark = np.asarray(pyfits.getdata(md))
                 if fallback:
                     self.Log('Loaded OLD masterdark: {}'.format(os.path.basename(md)))
                 else:
@@ -981,7 +981,7 @@ class ControlPanel(wx.Panel):
 
     def Reduce(self, exptime):
         self.BiasSubtract()
-        #self.DarkSubtract(exptime)
+        self.DarkSubtract(exptime)
         self.Flatfield()
 
     def ProcessBias(self, stack):
