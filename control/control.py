@@ -108,6 +108,8 @@ class ControlPanel(wx.Panel):
         self.tel_position = None
         self.wcs = None
         self.image_time = None
+        self.image_exptime = None
+        self.image_tel_position = None
         self.last_telescope_move = datetime.utcnow()
         # initialisations
         self.InitPaths()
@@ -661,6 +663,7 @@ class ControlPanel(wx.Panel):
         if self.worker is not None:
             self.image = event.image
             self.image_time = event.image_time
+            self.image_exptime = event.image_exptime
             self.image_tel_position = self.tel_position
             try:
                 self.worker.next()
@@ -1139,6 +1142,8 @@ class ControlPanel(wx.Panel):
         self.InitSAMP()
         if self.samp_client is not None:
             self.DS9LoadImage(self.images_path, self.filename, frame=1)
+        # TODO optionally place a region in the centre to help alignment,
+        #      same size as optional windowing, only when in continuous mode?
 
     def DisplayRGBImage(self):
         self.InitSAMP()
@@ -1164,7 +1169,15 @@ class ControlPanel(wx.Panel):
             name += '_{}'.format(imtype)
         # Could use the current (approximate) wcs, but can lead to confusion
         #header = self.wcs if self.wcs is not None else None
-        header = None
+        header = pyfits.Header()
+        header['DATE-OBS'] = self.image_time.strftime('%Y-%m-%d')
+        header['TIME-OBS'] = self.image_time.strftime('%H:%M:%S')
+        header['EXPTIME'] = self.image_exptime
+        header['RA'] = c.ra.to_string(u.hour, sep=':', precision=1, pad=True)
+        header['DEC'] = c.dec.to_string(u.degree, sep=':', precision=1,
+                                        pad=True, alwayssign=True)
+        if imtype is not None:
+            header['OBJECT'] = imtype
         if (filters or filtersum) is False:
             filename = name+'.fits'
             self.filename = filename

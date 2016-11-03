@@ -20,7 +20,7 @@ if not simulate:
 
 # Avoid multiple processes connecting to camera at same time
 COMlock = threading.Lock()
-        
+
 # ------------------------------------------------------------------------------
 # Event to signal that a new image is ready for use
 myEVT_IMAGEREADY_MAIN = wx.NewEventType()
@@ -30,17 +30,19 @@ EVT_IMAGEREADY_GUIDER = wx.PyEventBinder(myEVT_IMAGEREADY_GUIDER, 1)
 
 class ImageReadyEventMain(wx.PyCommandEvent):
     def __init__(self, etype=myEVT_IMAGEREADY_MAIN, eid=wx.ID_ANY, image=None,
-                 image_time=None):
+                 image_time=None, image_exptime=None):
         wx.PyCommandEvent.__init__(self, etype, eid)
         self.image = image
         self.image_time = image_time
+        self.image_exptime = image_exptime
 
 class ImageReadyEventGuider(wx.PyCommandEvent):
     def __init__(self, etype=myEVT_IMAGEREADY_GUIDER, eid=wx.ID_ANY, image=None,
-                 image_time=None):
+                 image_time=None, image_exptime=None):
         wx.PyCommandEvent.__init__(self, etype, eid)
         self.image = image
         self.image_time = image_time
+        self.image_exptime = image_exptime
 
 # ------------------------------------------------------------------------------
 # Class to obtain images on a separate thread.
@@ -135,7 +137,7 @@ class TakeImageThread(threading.Thread):
                 self.Log("Unable to disconnect from camera")
             self.cam = None
             win32com.client.pythoncom.CoUninitialize()
-            
+
     def SetWindowing(self, window=False, nx=100, ny=100):
         if window:
             self.cam.StartX = self.cam.CameraXSize // 2 - nx // 2
@@ -153,7 +155,7 @@ class TakeImageThread(threading.Thread):
     def SetExpTime(self, exptime):
         with self.exptime_lock:
             self.exptime = exptime
-            
+
     def GetExpTime(self):
         with self.exptime_lock:
             return self.exptime
@@ -185,7 +187,8 @@ class TakeImageThread(threading.Thread):
         if image is not None:
             wx.PostEvent(self.parent,
                          self.ImageReadyEvent(image=image,
-                                              image_time=image_time))
+                                              image_time=image_time,
+                                              image_exptime=exptime))
 
     def SimulateImage(self, exptime):
         # simulate an image
