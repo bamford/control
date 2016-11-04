@@ -41,9 +41,9 @@ class SolverThread(threading.Thread):
         self.solver = AstSolve.AstrometryNetSolver(workDirectory=self.dir)
         self.solver.timeout = self.timeout
         #self.solver.setProperty('downscale', 2)
-        self.solver.setProperty('xtra', '--depth 20 --no-plots '
-                                        '-N none --overwrite'
-                                        ' --keep-xylist %s.xy')
+        xtra = '--depth 20 --no-plots -N none --overwrite'
+        self.solver.setProperty('xtra', xtra + 
+                                ' --keep-xylist %s.xy')
         self.solver.setProperty('scale_low', 0.50)
         self.solver.setProperty('scale_max', 0.60)
         self.solver.setProperty('scale_units', 'arcsecperpix')
@@ -62,8 +62,7 @@ class SolverThread(threading.Thread):
                 solution = self.solver.solve(fn, target=target,
                                              callback=self.Log)
                 if solution is None and target is not None:
-                    self.solver.setProperty('xtra',
-                                            self.solver.getProperty('xtra') +
+                    self.solver.setProperty('xtra', xtra +
                                             ' --no-fits2fits --continue')
                     solution = self.solver.solve(fn.replace('.fits', '.xy'),
                                                  callback=self.Log)
