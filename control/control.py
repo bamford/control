@@ -19,6 +19,7 @@ from astropy.vo.samp import SAMPIntegratedClient
 import urlparse
 import sys
 import traceback
+import win32api
 
 # simulate obtaining images for testing
 simulate = False
@@ -165,6 +166,18 @@ class ControlPanel(wx.Panel):
                 self.Log("Telescope tracking")
             else:
                 self.Log("Unable to start telescope tracking")
+        if self.tel is not None:
+            now = self.tel.UTCDate
+            now = datetime(now.Year, now.Month, now.Day,
+                           now.Hour, now.Minute, now.Second,
+                           int(now.Millisecond * 1000)
+            if abs(now - datetime.utcnow()) > timedelta(minutes=5):
+                self.Log("Telescope time seems wrong!\n")
+            else:
+                self.Log("Syncing PC time to telescope time")
+                win32api.SetSystemTime(now.Year, now.Month, 0, now.Day,
+                                       now.Hour, now.Minute, now.Second,
+                                       now.Millisecond)
 
     def InitSAMP(self):
         try:
@@ -1046,48 +1059,58 @@ class ControlPanel(wx.Panel):
             dec_str = self.TargetDecCtrl.GetValue()
             target = coord.SkyCoord(ra_str, dec_str)
         except:
+            target = None
             self.Log('Target coordinates not recognised')
             traceback.print_exc()
-        ra_str = target.ra.to_string(u.hour, precision=1, pad=True)
-        dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
-                                       alwayssign=True)
-        self.TargetRACtrl.ChangeValue(ra_str)
-        self.TargetDecCtrl.ChangeValue(dec_str)
-        self.Log('Slewing to {} {}'.format(ra_str, dec_str))
-        self.tel.TargetRightAscension = target.ra.hour
-        self.tel.TargetDeclination = target.dec.deg
-        self.ast_position = None
-        try:
-            self.tel.SlewToTarget()
-        except:
-            self.Log('Slew failed')
-            traceback.print_exc()
+        if target is not None:
+            ra_str = target.ra.to_string(u.hour, precision=1, pad=True)
+            dec_str = target.dec.to_string(u.deg, precision=1, pad=True,
+                                           alwayssign=True)
+            self.TargetRACtrl.ChangeValue(ra_str)
+            self.TargetDecCtrl.ChangeValue(dec_str)
+            self.Log('Slewing to {} {}'.format(ra_str, dec_str))
+            self.tel.TargetRightAscension = target.ra.hour
+            self.tel.TargetDeclination = target.dec.deg
+            self.ast_position = None
+            try:
+                self.tel.SlewToTarget()
+            except:
+                self.Log('Slew failed')
+                traceback.print_exc()
+            else:
+                self.Log('Slew complete')
 
     def SyncToAstrometryAndOffsetTelescope(self, event):
         if self.tel is not None and self.ast_position is not None:
             ra = self.tel.RightAscension
             dec = self.tel.Declination
-            if self.tel_position.separation(self.ast_position).degree < 5:
+            if (self.tel_position.separation(self.ast_position).degree < 5
+                or self.CheckSync()):                
                 self.tel.SyncToCoordinates(self.ast_position.ra.hour,
                                            self.ast_position.dec.deg)
                 self.Log('Syncing telescope to astrometry')
-                self.tel.TargetRightAscension = ra
-                self.tel.TargetDeclination = dec
-                self.tel.SlewToTarget()
+                self.tel.SlewToCoordinates(ra, dec)
                 self.Log('Telescope offset to original target position')
             else:
                 self.Log('Refusing to sync: offset > 5 deg')
         else:
             self.Log('NOT syncing telescope to astrometry')
 
+    def CheckSync(self):
+        dial = wx.MessageDialog(None,
+                                'Sync offset > 5 deg.\n'
+                                'Telescope may need aligning.\n'
+                                'Are you sure you want to sync?',
+                                wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+        response = dial.ShowModal()
+        return response == wx.ID_OK
+            
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
             ra = self.tel.RightAscension + dra / (60*60*24)
             dec = self.tel.Declination + ddec / (60*60*360)
-            self.tel.TargetRightAscension = ra
-            self.tel.TargetDeclination = dec
-            self.tel.SlewToTarget()
+            self.tel.SlewToCoordinates(ra, dec)
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
 
@@ -1329,7 +1352,8 @@ def excepthook(type, value, tb):
     message += '\nSorry, something has gone wrong.\n'
     message += 'If problems continue it is probably best to restart Control.'
     print(message)
-
+    wx.MessageDialog(None, message)
+    
 def main():
     sys.excepthook = excepthook
     app = wx.App(False)
