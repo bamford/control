@@ -170,7 +170,7 @@ class ControlPanel(wx.Panel):
             now = self.tel.UTCDate
             now = datetime(now.Year, now.Month, now.Day,
                            now.Hour, now.Minute, now.Second,
-                           int(now.Millisecond * 1000)
+                           now.Millisecond * 1000)
             if abs(now - datetime.utcnow()) > timedelta(minutes=5):
                 self.Log("Telescope time seems wrong!\n")
             else:
