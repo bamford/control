@@ -507,7 +507,7 @@ class ControlPanel(wx.Panel):
             self.tel_dec.SetLabel('Dec:  '+dec)
         else:
             self.tel_position = None
-            self.tel_ra.SetLabel('Tel. RA:  not available')
+            self.tel_ra.SetLabel('RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
 
     def UpdateAstrometry(self):
@@ -882,7 +882,7 @@ class ControlPanel(wx.Panel):
 
     def Delay(self, delaytime):
         if delaytime > 0:
-            self.Log('Waiting {:.1f} sec'.format(delaytime))
+            self.Log('### Waiting {:.1f} sec'.format(delaytime))
             delay = delaytime
             while delay > 0:
                 self.CheckForAbort()
