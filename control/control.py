@@ -1173,9 +1173,11 @@ class ControlPanel(wx.Panel):
         header['DATE-OBS'] = self.image_time.strftime('%Y-%m-%d')
         header['TIME-OBS'] = self.image_time.strftime('%H:%M:%S')
         header['EXPTIME'] = self.image_exptime
-        header['RA'] = c.ra.to_string(u.hour, sep=':', precision=1, pad=True)
-        header['DEC'] = c.dec.to_string(u.degree, sep=':', precision=1,
-                                        pad=True, alwayssign=True)
+        if ((self.image_tel_position is not None) and
+            imtype is not in ('bias', 'dark', 'flat')):
+            header['RA'] = self.image_tel_position.ra.to_string(u.hour, sep=':', precision=1, pad=True)
+            header['DEC'] = self.image_tel_position.dec.to_string(u.degree, sep=':', precision=1,
+                                                                  pad=True, alwayssign=True)
         if imtype is not None:
             header['OBJECT'] = imtype
         if (filters or filtersum) is False:
