@@ -59,13 +59,13 @@ class SolverThread(threading.Thread):
                     target = Coordinate(position.ra.deg, position.dec.deg)
                 else:
                     target = None
-                solution = self.solver.solve(fn, target=target,
-                                             callback=self.Log)
+                solution = self.solver.solve(fn, target=target)
+                                             #callback=self.Log)
                 if solution is None:
                     self.solver.setProperty('xtra', xtra +
                                             ' --no-fits2fits --continue')
-                    solution = self.solver.solve(fn.replace('.fits', '.xy'),
-                                                 callback=self.Log)
+                    solution = self.solver.solve(fn.replace('.fits', '.xy'))
+                                                 #callback=self.Log)
                 wx.PostEvent(self.parent,
                              SolutionReadyEvent(solution=solution,
                                             image_time=image_time,
