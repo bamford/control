@@ -61,7 +61,7 @@ class SolverThread(threading.Thread):
                     target = None
                 solution = self.solver.solve(fn, target=target,
                                              callback=self.Log)
-                if solution is None and target is not None:
+                if solution is None:
                     self.solver.setProperty('xtra', xtra +
                                             ' --no-fits2fits --continue')
                     solution = self.solver.solve(fn.replace('.fits', '.xy'),

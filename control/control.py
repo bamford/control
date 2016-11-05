@@ -517,11 +517,13 @@ class ControlPanel(wx.Panel):
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
             dec = c.dec.to_string(u.degree, precision=1, pad=True, alwayssign=True)
             self.tel_ra.SetLabel('RA:  ' + ra)
-            self.tel_dec.SetLabel('Dec:  '+dec)
+            self.tel_dec.SetLabel('Dec:  '+ dec)
+            self.SlewButton.Enable()
         else:
             self.tel_position = None
             self.tel_ra.SetLabel('RA:  not available')
             self.tel_dec.SetLabel('Dec:  not available')
+            self.SlewButton.Disable()
 
     def UpdateAstrometry(self):
         if self.image_time is None or self.last_telescope_move > self.image_time:
