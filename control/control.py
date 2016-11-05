@@ -1281,6 +1281,10 @@ class ControlPanel(wx.Panel):
             wcs = None
         self.Log(message)
         self.UpdateFileWCS(event.filenames, wcs)
+        if wcs is not None and self.image_time == event.image_time:
+            # no other image taken in meantime
+            self.DisplayImage()
+            
 
     def UpdateFileWCS(self, filenames, wcs):
         if wcs is not None:
