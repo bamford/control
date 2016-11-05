@@ -1196,8 +1196,8 @@ class ControlPanel(wx.Panel):
         #header = self.wcs if self.wcs is not None else None
         header = pyfits.Header()
         header['DATE-OBS'] = self.image_time.strftime('%Y-%m-%d')
-        header['TIME-OBS'] = self.image_time.strftime('%H:%M:%S')
-        header['EXPTIME'] = self.image_exptime
+        header['TIME-OBS'] = self.image_time.strftime('%H:%M:%S.%f')
+        header['EXPTIME'] = (self.image_exptime, 'seconds')
         if ((self.image_tel_position is not None) and
             imtype not in ('bias', 'dark', 'flat')):
             header['RA'] = self.image_tel_position.ra.to_string(u.hour, sep=':', precision=1, pad=True)
