@@ -506,8 +506,13 @@ class ControlPanel(wx.Panel):
         now = datetime.utcnow()
         timeStamp = now.strftime('%H:%M:%S UT')
         self.pc_time.SetLabel('PC time:  {}'.format(timeStamp))
+        try:
+            now = self.tel.UTCDate
+        except:
+            self.tel = None
+            self.Log('Telescope disconnected')
         if self.tel is not None:
-            self.tel_time.SetLabel('Tel. time:  {}'.format(self.tel.UTCDate))
+            self.tel_time.SetLabel('Tel. time:  {}'.format(now))
         else:
             self.tel_time.SetLabel('Tel. time:  not available')
 
