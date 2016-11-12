@@ -128,6 +128,8 @@ class ControlPanel(wx.Panel):
         self.InitSolver()
         wx.Yield()
         self.LoadCalibrations()
+        self.UpdateInfoTimer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
         self.UpdateInfoTimer.Start(1000) # 1 second interval
 
     def InitCamera(self):
@@ -284,8 +286,6 @@ class ControlPanel(wx.Panel):
         InfoBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         self.InitInfo(self, InfoBox)
         feedbackbox.Add(InfoBox, 1, flag=wx.EXPAND)
-        self.UpdateInfoTimer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
         #sb = wx.StaticBox(self, label="Image")
         #ImageBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         #feedbackbox.Add(ImageBox, 2, flag=wx.EXPAND)
@@ -430,7 +430,7 @@ class ControlPanel(wx.Panel):
     def InitInfo(self, panel, box):
         # Times
         subBox = wx.BoxSizer(wx.HORIZONTAL)
-        self.pc_time = wx.StaticText(panel)
+        self.pc_time = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.pc_time)
         subBox.Add((20, -1))
         self.tel_time = wx.StaticText(panel)
@@ -495,7 +495,6 @@ class ControlPanel(wx.Panel):
         subBox.Add(self.SlewButton, flag=wx.wx.EXPAND|wx.ALL,
                    border=0)
         box.Add(subBox, 0)
-        self.UpdateInfo(None)
 
     def UpdateInfo(self, event):
         self.UpdateTime()
@@ -506,13 +505,13 @@ class ControlPanel(wx.Panel):
         now = datetime.utcnow()
         timeStamp = now.strftime('%H:%M:%S UT')
         self.pc_time.SetLabel('PC time:  {}'.format(timeStamp))
-        try:
-            now = self.tel.UTCDate
-        except:
-            self.tel = None
-            self.Log('Telescope disconnected')
         if self.tel is not None:
-            self.tel_time.SetLabel('Tel. time:  {}'.format(now))
+            try:
+                now = self.tel.UTCDate
+                self.tel_time.SetLabel('Tel. time:  {}'.format(now))
+            except:
+                self.tel = None
+                self.Log('Telescope disconnected')
         else:
             self.tel_time.SetLabel('Tel. time:  not available')
 
