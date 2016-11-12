@@ -542,7 +542,7 @@ class ControlPanel(wx.Panel):
                                                   alwayssign=True)
             self.ast_ra.SetLabel('RA:  ' + ra)
             self.ast_dec.SetLabel('Dec:  ' + dec)
-            self.SyncButton.Enable()
+            #self.SyncButton.Enable()
         else:
             self.ast_ra.SetLabel('None')
             self.ast_dec.SetLabel('')
@@ -619,7 +619,8 @@ class ControlPanel(wx.Panel):
         for button in self.WorkButtons:
             button.Enable()
         if self.ast_position is not None:
-            self.SyncButton.Enable()
+            pass
+            #self.SyncButton.Enable()
         else:
             self.SyncButton.Disable()
 
