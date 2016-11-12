@@ -20,6 +20,7 @@ import urlparse
 import sys
 import traceback
 import win32api
+import ntsecuritycon, win32security
 
 # simulate obtaining images for testing
 simulate = False
@@ -168,16 +169,22 @@ class ControlPanel(wx.Panel):
                 self.Log("Unable to start telescope tracking")
         if self.tel is not None:
             now = self.tel.UTCDate
-            now = datetime(now.Year, now.Month, now.Day,
-                           now.Hour, now.Minute, now.Second,
-                           now.Millisecond * 1000)
-            if abs(now - datetime.utcnow()) > timedelta(minutes=5):
-                self.Log("Telescope time seems wrong!\n")
-            else:
-                self.Log("Syncing PC time to telescope time")
-                win32api.SetSystemTime(now.Year, now.Month, 0, now.Day,
-                                       now.Hour, now.Minute, now.Second,
-                                       now.Millisecond)
+            now = datetime(now.year, now.month, now.day,
+                           now.hour, now.minute, now.second,
+                           now.msec * 1000)
+            time_offset = abs(now - datetime.utcnow())
+            if time_offset > timedelta(seconds=1):
+                self.Log("PC and telescope times do not agree!\n")
+                if CheckAdjustTime():
+                    try:
+                        AdjustPrivilege(win32security.SE_SYSTEM_TIME_NAME)
+                        now = self.tel.UTCDate
+                        win32api.SetSystemTime(now.year, now.month, 0, now.day,
+                                               now.hour, now.minute, now.second,
+                                               now.msec)
+                        self.Log("Synced PC time to telescope time")
+                    except:
+                         self.Log("PC and telescope times NOT synced")
 
     def InitSAMP(self):
         try:
@@ -833,6 +840,14 @@ class ControlPanel(wx.Panel):
                 self.Log('Flat images done')
             self.StopWorking()
 
+    def CheckAdjustTime(self):
+        dial = wx.MessageDialog(None,
+                                'System and telescope times do not match.',
+                                'Adjust system time to telescope time?\n'
+                                wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+        response = dial.ShowModal()
+        return response == wx.ID_OK
+
     def CheckReadyForFlat(self):
         dial = wx.MessageDialog(None,
                                 'Telescope pointing at twilight sky '
@@ -1341,6 +1356,13 @@ class ControlPanel(wx.Panel):
         url = 'file:///'+os.path.abspath(os.path.join(path, filename)).replace('\\', '/')
         self.DS9Command('rgbimage', params={'url': url, 'name': filename})
 
+
+def AdjustPrivilege( priv ):
+    flags = ntsecuritycon.TOKEN_ADJUST_PRIVILEGES | ntsecuritycon.TOKEN_QUERY
+    htoken =  win32security.OpenProcessToken(win32api.GetCurrentProcess(), flags)
+    id = win32security.LookupPrivilegeValue(None, priv)
+    newPrivileges = [(id, ntsecuritycon.SE_PRIVILEGE_ENABLED)]
+    win32security.AdjustTokenPrivileges(htoken, 0, newPrivileges)
 
 class ControlError(Exception):
     def __init__(self, expr=None, msg=None):
