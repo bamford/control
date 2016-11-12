@@ -1101,33 +1101,36 @@ class ControlPanel(wx.Panel):
         if self.tel is not None and self.ast_position is not None:
             ra = self.tel.RightAscension
             dec = self.tel.Declination
-            if (self.tel_position.separation(self.ast_position).degree < 5
-                or self.CheckSync()):                
-                self.tel.SyncToCoordinates(self.ast_position.ra.hour,
-                                           self.ast_position.dec.deg)
-                self.Log('Syncing telescope to astrometry')
-                self.tel.SlewToCoordinates(ra, dec)
-                self.Log('Telescope offset to original target position')
-            else:
-                self.Log('Refusing to sync: offset > 5 deg')
+            sep = self.tel_position.separation(self.ast_position)
+            if (sep.degree < 5 or self.CheckSync()):
+                dra, ddec = self.tel_position.spherical_offsets_to(self.ast_position)
+                self.Log('Offsetting telescope to astrometry')
+                OffsetTelescope((dra, ddec))
+                self.Log('Telescope offset to astrometry')
         else:
             self.Log('NOT syncing telescope to astrometry')
 
     def CheckSync(self):
         dial = wx.MessageDialog(None,
-                                'Sync offset > 5 deg.\n'
+                                'Requested offset > 5 deg.\n'
                                 'Telescope may need aligning.\n'
-                                'Are you sure you want to sync?',
+                                'Are you sure you want to offset?',
                                 wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         response = dial.ShowModal()
         return response == wx.ID_OK
-            
+
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
-            ra = self.tel.RightAscension + dra / (60*60*24)
-            dec = self.tel.Declination + ddec / (60*60*360)
-            self.tel.SlewToCoordinates(ra, dec)
+            direction = 2 if dra > 0 else 3
+            offset_time = dra / tel.GuideRateRightAscension / 3.6
+            tel.PulseGuide(direction, offset_time)
+            direction = 0 if ddec > 0 else 1
+            offset_time = ddec / tel.GuideRateDeclination / 3.6
+            tel.PulseGuide(direction, offset_time)
+            while tel.IsPulseGuiding:
+                sleep(0.1)
+            self.Log('Telescope offset {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
 
