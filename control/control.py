@@ -843,7 +843,7 @@ class ControlPanel(wx.Panel):
     def CheckAdjustTime(self):
         dial = wx.MessageDialog(None,
                                 'System and telescope times do not match.',
-                                'Adjust system time to telescope time?\n'
+                                'Adjust system time to telescope time?\n',
                                 wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         response = dial.ShowModal()
         return response == wx.ID_OK
