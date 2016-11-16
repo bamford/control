@@ -172,16 +172,16 @@ class ControlPanel(wx.Panel):
             time_offset = abs(now - datetime.utcnow())
             if time_offset > timedelta(seconds=1):
                 self.Log("PC and telescope times do not agree!")
-                if self.CheckAdjustTime():
-                    try:
-                        AdjustPrivilege(win32security.SE_SYSTEMTIME_NAME)
-                        now = self.tel.UTCDate
-                        win32api.SetSystemTime(now.year, now.month, 0, now.day,
-                                               now.hour, now.minute, now.second,
-                                               now.msec)
-                        self.Log("Synced PC time to telescope time")
-                    except:
-                         self.Log("Could not sync PC to telescope time - please update manually")
+#                if self.CheckAdjustTime():
+#                    try:
+#                        AdjustPrivilege(win32security.SE_SYSTEMTIME_NAME)
+#                        now = self.tel.UTCDate
+#                        win32api.SetSystemTime(now.year, now.month, 0, now.day,
+#                                               now.hour, now.minute, now.second,
+#                                               now.msec)
+#                        self.Log("Synced PC time to telescope time")
+#                    except:
+#                         self.Log("Could not sync PC to telescope time - please update manually")
 
     def InitSAMP(self):
         try:
@@ -517,7 +517,7 @@ class ControlPanel(wx.Panel):
                                dec=self.tel.Declination,
                                unit=(u.hour, u.degree), frame='icrs')
             if self.tel_position is not None:
-                if c.separation(self.tel_position).arcsecond > 1:
+                if c.separation(self.tel_position).arcsecond > 15:
                     self.last_telescope_move = datetime.utcnow()
             self.tel_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
@@ -842,7 +842,7 @@ class ControlPanel(wx.Panel):
     def CheckAdjustTime(self):
         dial = wx.MessageDialog(None,
                                 'Adjust system time to telescope time?\n',
-                                'System and telescope times do not match.',
+                                'System and telescope times do not match',
                                 wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         response = dial.ShowModal()
         return response == wx.ID_OK
@@ -1104,7 +1104,7 @@ class ControlPanel(wx.Panel):
             if (sep.degree < 5 or self.CheckSync()):
                 dra, ddec = self.tel_position.spherical_offsets_to(self.ast_position)
                 self.Log('Offsetting telescope to astrometry')
-                OffsetTelescope((dra, ddec))
+                self.OffsetTelescope((dra.arcsec, ddec.arcsec))
                 self.Log('Telescope offset to astrometry')
         else:
             self.Log('NOT syncing telescope to astrometry')
@@ -1121,20 +1121,24 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
+            self.tel.GuideRateRightAscension = 0.1
+            self.tel.GuideRateDeclination = 0.1
             direction = 2 if dra > 0 else 3
-            offset_time = dra / tel.GuideRateRightAscension / 3.6
-            tel.PulseGuide(direction, offset_time)
+            offset_time = abs(dra / self.tel.GuideRateRightAscension / 3.6)
+            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
+            self.tel.PulseGuide(direction, offset_time)
             direction = 0 if ddec > 0 else 1
-            offset_time = ddec / tel.GuideRateDeclination / 3.6
-            tel.PulseGuide(direction, offset_time)
-            while tel.IsPulseGuiding:
-                sleep(0.1)
+            offset_time = abs(ddec / self.tel.GuideRateDeclination / 3.6)
+            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
+            self.tel.PulseGuide(direction, offset_time)
+            while self.tel.IsPulseGuiding:
+                time.sleep(0.1)
             self.Log('Telescope offset {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
 
     def GetFlatExpTime(self, start_exptime=None,
-                       min_exptime=0.001, max_exptime=60.0,
+                       min_exptime=0.1, max_exptime=120.0,
                        min_counts=25000.0, max_counts=35000.0):
         target_counts = (min_counts + max_counts)/2.0
         if start_exptime is None:
@@ -1161,12 +1165,11 @@ class ControlPanel(wx.Panel):
                 self.Log('Required exposure time '
                          'longer than {:.3f} sec'.format(max_exptime))
                 exptime = -1
-                break
             if exptime < min_exptime:
                 self.Log('Required exposure time '
                          'shorter than {:.3f} sec'.format(min_exptime))
                 exptime = -1
-                break
+            break  # only try one test image
         yield exptime
 
     def TakeImage(self, exptime):
