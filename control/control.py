@@ -181,9 +181,8 @@ class ControlPanel(wx.Panel):
                                                now.msec)
                         self.Log("Synced PC time to telescope time")
                     except:
-                         self.Log("PC and telescope times NOT synced")
-                         if debug:
-                             raise
+                         self.Log("Could not sync PC to telescope time - please update manually")
+
     def InitSAMP(self):
         try:
             if self.samp_client is None:
