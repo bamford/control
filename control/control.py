@@ -117,17 +117,12 @@ class ControlPanel(wx.Panel):
         self.InitPaths()
         self.InitPanel()
         wx.Yield()
-        self.InitSAMP()
-        wx.Yield()
-        self.InitDS9()
-        wx.Yield()
-        self.InitTelescope()
-        wx.Yield()
-        self.InitCamera()
-        wx.Yield()
-        self.InitSolver()
-        wx.Yield()
-        self.LoadCalibrations()
+        wx.CallAfter(self.InitSAMP)
+        wx.CallAfter(self.InitDS9)
+        wx.CallAfter(self.InitTelescope)
+        wx.CallAfter(self.InitCamera)
+        wx.CallAfter(self.InitSolver)
+        wx.CallAfter(self.LoadCalibrations)
         self.UpdateInfoTimer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
         self.UpdateInfoTimer.Start(1000) # 1 second interval
@@ -176,10 +171,10 @@ class ControlPanel(wx.Panel):
                            now.msec * 1000)
             time_offset = abs(now - datetime.utcnow())
             if time_offset > timedelta(seconds=1):
-                self.Log("PC and telescope times do not agree!\n")
-                if CheckAdjustTime():
+                self.Log("PC and telescope times do not agree!")
+                if self.CheckAdjustTime():
                     try:
-                        AdjustPrivilege(win32security.SE_SYSTEM_TIME_NAME)
+                        AdjustPrivilege(win32security.SE_SYSTEMTIME_NAME)
                         now = self.tel.UTCDate
                         win32api.SetSystemTime(now.year, now.month, 0, now.day,
                                                now.hour, now.minute, now.second,
@@ -187,7 +182,8 @@ class ControlPanel(wx.Panel):
                         self.Log("Synced PC time to telescope time")
                     except:
                          self.Log("PC and telescope times NOT synced")
-
+                         if debug:
+                             raise
     def InitSAMP(self):
         try:
             if self.samp_client is None:
@@ -846,8 +842,8 @@ class ControlPanel(wx.Panel):
 
     def CheckAdjustTime(self):
         dial = wx.MessageDialog(None,
-                                'System and telescope times do not match.',
                                 'Adjust system time to telescope time?\n',
+                                'System and telescope times do not match.',
                                 wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         response = dial.ShowModal()
         return response == wx.ID_OK
