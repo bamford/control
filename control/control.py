@@ -12,6 +12,7 @@ from Queue import Queue
 import os.path
 from glob import glob
 import numpy as np
+from scipy.ndimage.interpolation import shift
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
@@ -21,6 +22,7 @@ import sys
 import traceback
 import win32api
 import ntsecuritycon, win32security
+from RGBImage import RGBImage
 
 # simulate obtaining images for testing
 simulate = False
@@ -1165,6 +1167,7 @@ class ControlPanel(wx.Panel):
     def TakeImage(self, exptime):
         self.image = None
         self.filters = None
+        self.filters_interp = None
         if not self.ImageTaker.isAlive():
             self.Log("Restarting camera")
             self.StopCamera()
@@ -1194,7 +1197,7 @@ class ControlPanel(wx.Panel):
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
         self.SaveImage(imtype, name, filters=True)
-        #self.SaveJpeg(imtype, name)
+        self.SaveJpeg(imtype, name)
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
@@ -1245,19 +1248,33 @@ class ControlPanel(wx.Panel):
             #self.Log('Saved {}'.format(self.rgb_filename))
         self.DisplayImage()
 
+    def SaveJpeg(self, imtype=None, name=None):
+        im = RGBImage(self.filters_interp[0],
+                      self.filters_interp[1],
+                      self.filters_interp[2],
+                      process=True, desaturate=True)
+        im.save_as(name + '.jpg')
+
     def DeBayer(self):
         filters = []
         for i in (0, 1):
             for j in (0, 1):
-                d = self.image[i::2,j::2]
-                f = np.zeros(self.image.shape, self.image.dtype)
+                f = self.image[i::2,j::2]
+                fi = np.zeros(self.image.shape, self.image.dtype)
                 for p in (0, 1):
                     for q in (0, 1):
-                        f[p::2,q::2] = d
+                        fi[p::2,q::2] = shift(f,
+                                              (0.5 * (i - p),
+                                               0.5 * (j - q)),
+                                              order=1)
                 filters.append(f)
+                filters_interp.append(fi)
         r, g1, g2, b = filters
         g = (g1+g2)/2.0
         self.filters = np.array([r, g, b])
+        r, g1, g2, b = filters_interp
+        g = (g1+g2)/2.0
+        self.filters_interp = np.array([r, g, b])
 
     def GetAstrometry(self):
         self.Log('Attempting to determine astrometry')
@@ -1294,12 +1311,12 @@ class ControlPanel(wx.Panel):
         if wcs is not None and self.image_time == event.image_time:
             # no other image taken in meantime
             self.DisplayImage()
-            
 
     def UpdateFileWCS(self, filenames, wcs):
         if wcs is not None:
             filenames = [os.path.join(self.images_path, f) for f in filenames]
             for fn in filenames:
+                # in principle could tweak WCS for each filter here
                 for attempt in range(3):
                     # try several times as might be being accessed by DS9
                     try:
@@ -1376,7 +1393,7 @@ def excepthook(type, value, tb):
     message += 'If problems continue it is probably best to restart Control.'
     print(message)
     wx.MessageDialog(None, message)
-    
+
 def main():
     sys.excepthook = excepthook
     app = wx.App(False)
