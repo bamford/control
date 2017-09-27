@@ -880,9 +880,9 @@ class ControlPanel(wx.Panel):
                     #fullfilename = os.path.join(self.images_root_path, 'solve',
                     #                            'test.fits')
                     #self.image = pyfits.getdata(fullfilename)
-                    self.SaveImage()
+                    self.SaveImage('sci')
                     self.Reduce(exptime)
-                    self.SaveRGBImages()
+                    self.SaveRGBImages('sci')
                     self.GetAstrometry()
                     self.DisplayRGBImage()
                     self.CheckForAbort()
