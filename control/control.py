@@ -171,17 +171,7 @@ class ControlPanel(wx.Panel):
                            now.msec * 1000)
             time_offset = abs(now - datetime.utcnow())
             if time_offset > timedelta(seconds=1):
-                self.Log("PC and telescope times do not agree!")
-#                if self.CheckAdjustTime():
-#                    try:
-#                        AdjustPrivilege(win32security.SE_SYSTEMTIME_NAME)
-#                        now = self.tel.UTCDate
-#                        win32api.SetSystemTime(now.year, now.month, 0, now.day,
-#                                               now.hour, now.minute, now.second,
-#                                               now.msec)
-#                        self.Log("Synced PC time to telescope time")
-#                    except:
-#                         self.Log("Could not sync PC to telescope time - please update manually")
+                self.Log("Warning: PC and telescope times do not agree!")
 
     def InitSAMP(self):
         try:
