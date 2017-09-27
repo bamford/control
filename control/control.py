@@ -1180,8 +1180,14 @@ class ControlPanel(wx.Panel):
         self.InitSAMP()
         if self.samp_client is not None:
             self.DS9LoadImage(self.images_path, self.filename, frame=1)
-        # TODO optionally place a region in the centre to help alignment,
-        #      same size as optional windowing, only when in continuous mode?
+        # when in continuous mode place a region in the centre to help
+        # alignment, same size as optional windowing
+        if 'continuous' in self.filename:
+            self.DS9SelectFrame(1)
+            nx = ny = 100
+            cx = self.image.shape[0] // 2
+            cy = self.image.shape[1] // 2
+            self.DS9Command('regions command "box({},{},{},{},0)"'.format(cx, cy, nx, ny))
 
     def DisplayRGBImage(self):
         self.InitSAMP()
