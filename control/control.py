@@ -12,6 +12,7 @@ from Queue import Queue
 import os.path
 from glob import glob
 import numpy as np
+from scipy.ndimage.interpolation import shift
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
@@ -21,6 +22,7 @@ import sys
 import traceback
 import win32api
 import ntsecuritycon, win32security
+from RGBImage import RGBImage
 
 # simulate obtaining images for testing
 simulate = False
@@ -117,17 +119,14 @@ class ControlPanel(wx.Panel):
         self.InitPaths()
         self.InitPanel()
         wx.Yield()
-        self.InitSAMP()
-        wx.Yield()
-        self.InitDS9()
-        wx.Yield()
-        self.InitTelescope()
-        wx.Yield()
-        self.InitCamera()
-        wx.Yield()
-        self.InitSolver()
-        wx.Yield()
-        self.LoadCalibrations()
+        wx.CallAfter(self.InitSAMP)
+        wx.CallAfter(self.InitDS9)
+        wx.CallAfter(self.InitTelescope)
+        wx.CallAfter(self.InitCamera)
+        wx.CallAfter(self.InitSolver)
+        wx.CallAfter(self.LoadCalibrations)
+        self.UpdateInfoTimer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
         self.UpdateInfoTimer.Start(1000) # 1 second interval
 
     def InitCamera(self):
@@ -174,7 +173,7 @@ class ControlPanel(wx.Panel):
                            now.msec * 1000)
             time_offset = abs(now - datetime.utcnow())
             if time_offset > timedelta(seconds=1):
-                self.Log("PC and telescope times do not agree!")
+                self.Log("Warning: PC and telescope times do not agree!")
 
     def InitSAMP(self):
         try:
@@ -274,8 +273,6 @@ class ControlPanel(wx.Panel):
         InfoBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         self.InitInfo(self, InfoBox)
         feedbackbox.Add(InfoBox, 1, flag=wx.EXPAND)
-        self.UpdateInfoTimer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.UpdateInfo, self.UpdateInfoTimer)
         #sb = wx.StaticBox(self, label="Image")
         #ImageBox = wx.StaticBoxSizer(sb, wx.VERTICAL)
         #feedbackbox.Add(ImageBox, 2, flag=wx.EXPAND)
@@ -420,7 +417,7 @@ class ControlPanel(wx.Panel):
     def InitInfo(self, panel, box):
         # Times
         subBox = wx.BoxSizer(wx.HORIZONTAL)
-        self.pc_time = wx.StaticText(panel)
+        self.pc_time = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.pc_time)
         subBox.Add((20, -1))
         self.tel_time = wx.StaticText(panel)
@@ -485,7 +482,6 @@ class ControlPanel(wx.Panel):
         subBox.Add(self.SlewButton, flag=wx.wx.EXPAND|wx.ALL,
                    border=0)
         box.Add(subBox, 0)
-        self.UpdateInfo(None)
 
     def UpdateInfo(self, event):
         self.UpdateTime()
@@ -497,7 +493,12 @@ class ControlPanel(wx.Panel):
         timeStamp = now.strftime('%H:%M:%S UT')
         self.pc_time.SetLabel('PC time:  {}'.format(timeStamp))
         if self.tel is not None:
-            self.tel_time.SetLabel('Tel. time:  {}'.format(self.tel.UTCDate))
+            try:
+                now = self.tel.UTCDate
+                self.tel_time.SetLabel('Tel. time:  {}'.format(now))
+            except:
+                self.tel = None
+                self.Log('Telescope disconnected')
         else:
             self.tel_time.SetLabel('Tel. time:  not available')
 
@@ -508,7 +509,7 @@ class ControlPanel(wx.Panel):
                                dec=self.tel.Declination,
                                unit=(u.hour, u.degree), frame='icrs')
             if self.tel_position is not None:
-                if c.separation(self.tel_position).arcsecond > 1:
+                if c.separation(self.tel_position).arcsecond > 15:
                     self.last_telescope_move = datetime.utcnow()
             self.tel_position = c
             ra = c.ra.to_string(u.hour, precision=1, pad=True)
@@ -833,8 +834,8 @@ class ControlPanel(wx.Panel):
 
     def CheckAdjustTime(self):
         dial = wx.MessageDialog(None,
-                                'System and telescope times do not match.',
                                 'Adjust system time to telescope time?\n',
+                                'System and telescope times do not match',
                                 wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         response = dial.ShowModal()
         return response == wx.ID_OK
@@ -882,9 +883,9 @@ class ControlPanel(wx.Panel):
                     #fullfilename = os.path.join(self.images_root_path, 'solve',
                     #                            'test.fits')
                     #self.image = pyfits.getdata(fullfilename)
-                    self.SaveImage()
+                    self.SaveImage('sci')
                     self.Reduce(exptime)
-                    self.SaveRGBImages()
+                    self.SaveRGBImages('sci')
                     self.GetAstrometry()
                     self.DisplayRGBImage()
                     self.CheckForAbort()
@@ -1096,7 +1097,7 @@ class ControlPanel(wx.Panel):
             if (sep.degree < 5 or self.CheckSync()):
                 dra, ddec = self.tel_position.spherical_offsets_to(self.ast_position)
                 self.Log('Offsetting telescope to astrometry')
-                OffsetTelescope((dra, ddec))
+                self.OffsetTelescope((dra.arcsec, ddec.arcsec))
                 self.Log('Telescope offset to astrometry')
         else:
             self.Log('NOT syncing telescope to astrometry')
@@ -1113,20 +1114,24 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
+            self.tel.GuideRateRightAscension = 0.1
+            self.tel.GuideRateDeclination = 0.1
             direction = 2 if dra > 0 else 3
-            offset_time = dra / tel.GuideRateRightAscension / 3.6
-            tel.PulseGuide(direction, offset_time)
+            offset_time = abs(dra / self.tel.GuideRateRightAscension / 3.6)
+            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
+            self.tel.PulseGuide(direction, offset_time)
             direction = 0 if ddec > 0 else 1
-            offset_time = ddec / tel.GuideRateDeclination / 3.6
-            tel.PulseGuide(direction, offset_time)
-            while tel.IsPulseGuiding:
-                sleep(0.1)
+            offset_time = abs(ddec / self.tel.GuideRateDeclination / 3.6)
+            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
+            self.tel.PulseGuide(direction, offset_time)
+            while self.tel.IsPulseGuiding:
+                time.sleep(0.1)
             self.Log('Telescope offset {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
 
     def GetFlatExpTime(self, start_exptime=None,
-                       min_exptime=0.001, max_exptime=60.0,
+                       min_exptime=0.1, max_exptime=120.0,
                        min_counts=25000.0, max_counts=35000.0):
         target_counts = (min_counts + max_counts)/2.0
         if start_exptime is None:
@@ -1153,17 +1158,17 @@ class ControlPanel(wx.Panel):
                 self.Log('Required exposure time '
                          'longer than {:.3f} sec'.format(max_exptime))
                 exptime = -1
-                break
             if exptime < min_exptime:
                 self.Log('Required exposure time '
                          'shorter than {:.3f} sec'.format(min_exptime))
                 exptime = -1
-                break
+            break  # only try one test image
         yield exptime
 
     def TakeImage(self, exptime):
         self.image = None
         self.filters = None
+        self.filters_interp = None
         if not self.ImageTaker.isAlive():
             self.Log("Restarting camera")
             self.StopCamera()
@@ -1193,7 +1198,7 @@ class ControlPanel(wx.Panel):
     def SaveRGBImages(self, imtype=None, name=None):
         self.DeBayer()
         self.SaveImage(imtype, name, filters=True)
-        #self.SaveJpeg(imtype, name)
+        self.SaveJpeg(imtype, name)
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
@@ -1244,19 +1249,33 @@ class ControlPanel(wx.Panel):
             #self.Log('Saved {}'.format(self.rgb_filename))
         self.DisplayImage()
 
+    def SaveJpeg(self, imtype=None, name=None):
+        im = RGBImage(self.filters_interp[0],
+                      self.filters_interp[1],
+                      self.filters_interp[2],
+                      process=True, desaturate=True)
+        im.save_as(name + '.jpg')
+
     def DeBayer(self):
         filters = []
         for i in (0, 1):
             for j in (0, 1):
-                d = self.image[i::2,j::2]
-                f = np.zeros(self.image.shape, self.image.dtype)
+                f = self.image[i::2,j::2]
+                fi = np.zeros(self.image.shape, self.image.dtype)
                 for p in (0, 1):
                     for q in (0, 1):
-                        f[p::2,q::2] = d
+                        fi[p::2,q::2] = shift(f,
+                                              (0.5 * (i - p),
+                                               0.5 * (j - q)),
+                                              order=1)
                 filters.append(f)
+                filters_interp.append(fi)
         r, g1, g2, b = filters
         g = (g1+g2)/2.0
         self.filters = np.array([r, g, b])
+        r, g1, g2, b = filters_interp
+        g = (g1+g2)/2.0
+        self.filters_interp = np.array([r, g, b])
 
     def GetAstrometry(self):
         self.Log('Attempting to determine astrometry')
@@ -1293,12 +1312,12 @@ class ControlPanel(wx.Panel):
         if wcs is not None and self.image_time == event.image_time:
             # no other image taken in meantime
             self.DisplayImage()
-            
 
     def UpdateFileWCS(self, filenames, wcs):
         if wcs is not None:
             filenames = [os.path.join(self.images_path, f) for f in filenames]
             for fn in filenames:
+                # in principle could tweak WCS for each filter here
                 for attempt in range(3):
                     # try several times as might be being accessed by DS9
                     try:
@@ -1375,7 +1394,7 @@ def excepthook(type, value, tb):
     message += 'If problems continue it is probably best to restart Control.'
     print(message)
     wx.MessageDialog(None, message)
-    
+
 def main():
     sys.excepthook = excepthook
     app = wx.App(False)
