@@ -196,9 +196,9 @@ class ControlPanel(wx.Panel):
             self.DS9Command('frame delete all')
             self.DS9Command('tile')
             self.DS9Command('frame new')
-            #self.DS9Command('zoom 0.2')
+            #self.DS9Command('zoom 0.125')
             self.DS9Command('frame new rgb')
-            #self.DS9Command('zoom 0.2')
+            #self.DS9Command('zoom 0.25')
             self.DS9Command('rgb close')
         else:
             self.Log('No connection to DS9')
@@ -884,7 +884,7 @@ class ControlPanel(wx.Panel):
                     #self.image = pyfits.getdata(fullfilename)
                     self.SaveImage('sci')
                     self.Reduce(exptime)
-                    self.SaveRGBImages('sci')
+                    self.SaveRGBImages('sci', jpeg=True)
                     self.GetAstrometry()
                     self.DisplayRGBImage()
                     self.CheckForAbort()
@@ -1185,8 +1185,8 @@ class ControlPanel(wx.Panel):
         if 'continuous' in self.filename:
             self.DS9SelectFrame(1)
             nx = ny = 100
-            cx = self.image.shape[0] // 2
-            cy = self.image.shape[1] // 2
+            cx = self.image.shape[1] // 2
+            cy = self.image.shape[0] // 2
             self.DS9Command('regions command "box({},{},{},{},0)"'.format(cx, cy, nx, ny))
 
     def DisplayRGBImage(self):
@@ -1200,9 +1200,9 @@ class ControlPanel(wx.Panel):
             self.DS9Command('rgb close')
             #self.DS9LoadRGBImage(self.images_path, self.rgb_filename, frame=2)
 
-    def SaveRGBImages(self, imtype=None, name=None):
+    def SaveRGBImages(self, imtype=None, name=None, jpeg=False):
         self.DeBayer()
-        self.SaveImage(imtype, name, filters=True)
+        name = self.SaveImage(imtype, name, filters=True)
         self.SaveJpeg(imtype, name)
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
@@ -1253,16 +1253,20 @@ class ControlPanel(wx.Panel):
             #pyfits.append(fullfilename, self.filters[2], header)
             #self.Log('Saved {}'.format(self.rgb_filename))
         self.DisplayImage()
+        return name
 
     def SaveJpeg(self, imtype=None, name=None):
         im = RGBImage(self.filters_interp[0],
                       self.filters_interp[1],
                       self.filters_interp[2],
                       process=True, desaturate=True)
-        im.save_as(name + '.jpg')
+        filename = name+'.jpg'
+        fullfilename = os.path.join(self.images_path, filename)
+        im.save_as(fullfilename)
 
     def DeBayer(self):
         filters = []
+        filters_interp = []
         for i in (0, 1):
             for j in (0, 1):
                 f = self.image[i::2,j::2]
@@ -1290,7 +1294,7 @@ class ControlPanel(wx.Panel):
         solvefilename = os.path.join(path, 'solve.fits')
         self.solver.put((self.filters, solvefilename,
                          self.image_time,
-                         [self.filename] + self.filters_filename.values(),
+                         self.filters_filename.values(),
                          self.image_tel_position))
 
     def OnSolutionReady(self, event):
@@ -1316,7 +1320,7 @@ class ControlPanel(wx.Panel):
         self.UpdateFileWCS(event.filenames, wcs)
         if wcs is not None and self.image_time == event.image_time:
             # no other image taken in meantime
-            self.DisplayImage()
+            self.DisplayRGBImage()
 
     def UpdateFileWCS(self, filenames, wcs):
         if wcs is not None:

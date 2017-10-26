@@ -300,17 +300,3 @@ class RGBImage(object):
         for key,val in args.iteritems(): s += (',%s=%s' % (key,val))
         s += ')'
         exec(s)
-
-
-if __name__ == '__main__':
-    """test code"""
-    hdus1 = P.open('f814_mosaic_wherry.fits')
-    hdus2 = P.open('f606_mosaic_wherry.fits')
-    hdus3 = P.open('f450_mosaic_wherry.fits')
-
-    img1,img2,img3 = hdus1[0].data,hdus2[0].data,hdus3[0].data
-
-    lup = RGBImage(img1,img2,img3,
-                   scales=[7000,4000,15000],beta=3)
-    lup.show()
-    lup.save_as('test.jpg',quality=100)
