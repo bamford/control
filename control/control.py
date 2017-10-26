@@ -1113,8 +1113,17 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
+            # could do this more correctly with astropy
             ra = self.tel.RightAscension + dra / (60*60*24)
+            if ra > 24:
+                ra -= 24
+            elif ra < 0:
+                ra += 24
             dec = self.tel.Declination + ddec / (60*60*360)
+            if dec > 90:
+                dec = 90.0
+            elif dec < -90:
+                dec = -90.0
             self.tel.SlewToCoordinates(ra, dec)
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
