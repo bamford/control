@@ -44,8 +44,8 @@ class SolverThread(threading.Thread):
         xtra = '--depth 20 --no-plots -N none --overwrite'
         self.solver.setProperty('xtra', xtra + 
                                 ' --keep-xylist %s.xy')
-        self.solver.setProperty('scale_low', 0.50)
-        self.solver.setProperty('scale_max', 0.60)
+        self.solver.setProperty('scale_low', 0.20)
+        self.solver.setProperty('scale_max', 3.0)
         self.solver.setProperty('scale_units', 'arcsecperpix')
         self.solver.setProperty('searchradius', 5.0)
         try:
