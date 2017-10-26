@@ -445,16 +445,16 @@ class ControlPanel(wx.Panel):
         self.ast_dec = wx.StaticText(panel, size=(150,-1))
         subBox.Add(self.ast_dec)
         subBox.Add((20, -1))
-        self.SyncButton = wx.Button(panel, label='Sync and Offset')
-        self.SyncButton.Bind(wx.EVT_BUTTON,
-                             self.SyncToAstrometryAndOffsetTelescope)
-        self.SyncButton.SetToolTip(wx.ToolTip(
-            'Sync telescope position to astrometry and '
-            'offset to original target position'))
-        self.SyncButton.Disable()
-        subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
-                   border=0)
-        box.Add(subBox, 0)
+        #self.SyncButton = wx.Button(panel, label='Sync and Offset')
+        #self.SyncButton.Bind(wx.EVT_BUTTON,
+        #                     self.SyncToAstrometryAndOffsetTelescope)
+        #self.SyncButton.SetToolTip(wx.ToolTip(
+        #    'Sync telescope position to astrometry and '
+        #    'offset to original target position'))
+        #self.SyncButton.Disable()
+        #subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
+        #           border=0)
+        #box.Add(subBox, 0)
         box.Add((-1, 10))
         # Target entry
         subBox = wx.BoxSizer(wx.HORIZONTAL)
@@ -533,11 +533,11 @@ class ControlPanel(wx.Panel):
                                                   alwayssign=True)
             self.ast_ra.SetLabel('RA:  ' + ra)
             self.ast_dec.SetLabel('Dec:  ' + dec)
-            self.SyncButton.Enable()
+            #self.SyncButton.Enable()
         else:
             self.ast_ra.SetLabel('None')
             self.ast_dec.SetLabel('')
-            self.SyncButton.Disable()
+            #self.SyncButton.Disable()
 
 
     def UpdateWindowing(self, e):
@@ -609,15 +609,15 @@ class ControlPanel(wx.Panel):
     def EnableWorkButtons(self):
         for button in self.WorkButtons:
             button.Enable()
-        if self.ast_position is not None:
-            self.SyncButton.Enable()
-        else:
-            self.SyncButton.Disable()
+        #if self.ast_position is not None:
+        #    self.SyncButton.Enable()
+        #else:
+        #    self.SyncButton.Disable()
 
     def DisableWorkButtons(self):
         for button in self.WorkButtons:
             button.Disable()
-        self.SyncButton.Disable()
+        #self.SyncButton.Disable()
 
     def CheckForAbort(self):
         self.logger.Refresh()
@@ -1113,19 +1113,9 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
-            self.tel.GuideRateRightAscension = 0.1
-            self.tel.GuideRateDeclination = 0.1
-            direction = 2 if dra > 0 else 3
-            offset_time = abs(dra / self.tel.GuideRateRightAscension / 3.6)
-            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
-            self.tel.PulseGuide(direction, offset_time)
-            direction = 0 if ddec > 0 else 1
-            offset_time = abs(ddec / self.tel.GuideRateDeclination / 3.6)
-            self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
-            self.tel.PulseGuide(direction, offset_time)
-            while self.tel.IsPulseGuiding:
-                time.sleep(0.1)
-            self.Log('Telescope offset {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
+            ra = self.tel.RightAscension + dra / (60*60*24)
+            dec = self.tel.Declination + ddec / (60*60*360)
+            self.tel.SlewToCoordinates(ra, dec)
         else:
             self.Log('NOT offsetting telescope {:.1f}" RA, {:.1f}" Dec'.format(dra, ddec))
 
