@@ -196,7 +196,7 @@ def getsky(x, sigma=3.0):
         sky = N.median(x[mask])
         skyerr = (x - sky)[mask].std()
         mask = x < sky + skyerr * sigma
-        print(sky, skyerr)
+        #print(sky, skyerr)
     return sky, skyerr
 
 
