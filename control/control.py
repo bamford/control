@@ -885,8 +885,11 @@ class ControlPanel(wx.Panel):
                     self.SaveImage('sci')
                     self.Reduce(exptime)
                     try:
+                        wx.Yield()
                         self.SaveRGBImages('sci', jpeg=True)
+                        wx.Yield()
                         self.GetAstrometry()
+                        wx.Yield()
                         self.DisplayRGBImage()
                     except Exception as detail:
                         tb = traceback.format_exc()
@@ -1207,7 +1210,8 @@ class ControlPanel(wx.Panel):
     def SaveRGBImages(self, imtype=None, name=None, jpeg=False):
         self.DeBayer()
         name = self.SaveImage(imtype, name, filters=True)
-        self.SaveJpeg(imtype, name)
+        if jpeg:
+            self.SaveJpeg(imtype, name)
 
     def SaveImage(self, imtype=None, name=None, filters=False, filtersum=False):
         clobber = name is not None
