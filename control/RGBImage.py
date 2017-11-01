@@ -193,8 +193,9 @@ DESCRIPTION
 def getsky(x, sigma=3.0):
     mask = N.ones(x.shape, N.bool)
     for i in range(5):
-        sky = N.median(x[mask])
-        skyerr = (x - sky)[mask].std()
+        y = x[mask]
+        sky = N.median(y)
+        skyerr = N.sqrt(N.mean((y - sky)**2))
         mask = x < sky + skyerr * sigma
         #print(sky, skyerr)
     return sky, skyerr
@@ -253,11 +254,11 @@ class RGBImage(object):
     def do_process(self):
         scale = 0
         for x in (self.r, self.g, self.b):
-            sky, skyerr = getsky(x)
+            sky, skyerr = getsky(x[::2][::2]) # stride to speed up
             if skyerr > scale:
                 scale = skyerr
             x -= sky + skyerr
-        for x in (self.r, self.g, self.b):
+        for x in (self.r, self.g, self.b) and scale > 0:
             x /= scale
 
     def make_image(self):
