@@ -884,9 +884,14 @@ class ControlPanel(wx.Panel):
                     #self.image = pyfits.getdata(fullfilename)
                     self.SaveImage('sci')
                     self.Reduce(exptime)
-                    self.SaveRGBImages('sci', jpeg=True)
-                    self.GetAstrometry()
-                    self.DisplayRGBImage()
+                    try:
+                        self.SaveRGBImages('sci', jpeg=True)
+                        self.GetAstrometry()
+                        self.DisplayRGBImage()
+                    except Exception as detail:
+                        tb = traceback.format_exc()
+                        self.Log('Science images error:\n{}'.format(tb))
+                        self.Log('Attempting to continue')
                     self.CheckForAbort()
                     if i < nexp - 1:
                         self.Delay(delaytime)
