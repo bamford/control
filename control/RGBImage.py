@@ -258,8 +258,9 @@ class RGBImage(object):
             if skyerr > scale:
                 scale = skyerr
             x -= sky + skyerr
-        for x in (self.r, self.g, self.b) and scale > 0:
-            x /= scale
+        if scale > 0:
+            for x in (self.r, self.g, self.b):
+                x /= scale
 
     def make_image(self):
         """Generate RGB image with the current mapping function"""
