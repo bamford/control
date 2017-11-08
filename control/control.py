@@ -454,7 +454,7 @@ class ControlPanel(wx.Panel):
         #self.SyncButton.Disable()
         #subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
         #           border=0)
-        #box.Add(subBox, 0)
+        box.Add(subBox, 0)
         box.Add((-1, 10))
         # Target entry
         subBox = wx.BoxSizer(wx.HORIZONTAL)
