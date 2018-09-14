@@ -42,10 +42,10 @@ class SolverThread(threading.Thread):
         self.solver.timeout = self.timeout
         #self.solver.setProperty('downscale', 2)
         xtra = '--depth 20 --no-plots -N none --overwrite'
-        self.solver.setProperty('xtra', xtra + 
+        self.solver.setProperty('xtra', xtra +
                                 ' --keep-xylist %s.xy')
-        self.solver.setProperty('scale_low', 0.20)
-        self.solver.setProperty('scale_max', 3.0)
+        self.solver.setProperty('scale_low', 1.1)
+        self.solver.setProperty('scale_max', 1.3)
         self.solver.setProperty('scale_units', 'arcsecperpix')
         self.solver.setProperty('searchradius', 5.0)
         try:
