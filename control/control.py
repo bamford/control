@@ -1122,6 +1122,8 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
+            # why did pulse guiding not work?
+            # this is severely flawed - currently disabled
             # could do this more correctly with astropy
             ra = self.tel.RightAscension + dra / (60*60*24)
             if ra > 24:
