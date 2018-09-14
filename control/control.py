@@ -572,6 +572,7 @@ class ControlPanel(wx.Panel):
         self.logger.AppendText(text)
         try:
             self.logfile.write(text)
+            self.logfile.flush()
         except ValueError:
             # no logfile to write to
             pass
@@ -734,7 +735,7 @@ class ControlPanel(wx.Panel):
     def TakeDarkWorker(self):
         ndark = self.GetNumExp()
         darktime = self.GetExpTime()
-        if ndark is None or (ndark < self.min_ndark and darktime < self.min_darktime):
+        if (ndark is None) or ((ndark < self.min_ndark) and (darktime < self.min_darktime)):
             ndark = self.min_ndark
         if darktime is None or darktime < self.min_darktime:
             darktime = self.min_darktime
