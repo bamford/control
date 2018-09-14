@@ -1268,7 +1268,8 @@ class ControlPanel(wx.Panel):
         im = RGBImage(self.filters_interp[0],
                       self.filters_interp[1],
                       self.filters_interp[2],
-                      process=True, desaturate=True)
+                      process=True, desaturate=True,
+                      scales=[1.0, 0.8, 1.0])
         filename = name+'.jpg'
         fullfilename = os.path.join(self.images_path, filename)
         im.save_as(fullfilename)

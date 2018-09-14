@@ -239,15 +239,18 @@ class RGBImage(object):
         self.scales = scales
         self.mapping = mapping
         # input data sanity check
-        self.r = N.asarray(r).copy()*self.scales[0]
-        self.g = N.asarray(g).copy()*self.scales[1]
-        self.b = N.asarray(b).copy()*self.scales[2]
+        self.r = N.asarray(r).copy()
+        self.g = N.asarray(g).copy()
+        self.b = N.asarray(b).copy()
         if not (self.r.shape==self.g.shape==self.b.shape):
             raise ValueError('input data shape not consistent')
         # self.shape needs to be (horizontal,vertical) in size
         self.shape = (self.r.shape[1],self.r.shape[0])
         if 'process' in args:
             self.do_process()
+        self.r *= self.scales[0]
+        self.g *= self.scales[1]
+        self.b *= self.scales[2]
         # set normalized RGB pixel values
         self.make_image()
 
