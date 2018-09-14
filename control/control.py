@@ -95,7 +95,7 @@ class ControlPanel(wx.Panel):
         self.min_nflat = 3
         self.min_ndark = 5
         self.min_darktime = 5.0
-        self.max_ncontinuous = 100
+        self.max_ncontinuous = 10000
         # do not subtract more dark than this
         # (to avoid oversubtracting saturated hot pixels):
         self.maxdark = 22500
