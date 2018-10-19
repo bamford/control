@@ -101,7 +101,8 @@ class ControlPanel(wx.Panel):
         self.maxdark = 22500
         self.flat_offset = (10.0, 10.0)
         self.readout_time = 3.0
-        self.images_root_path = "C:/Users/lab_user/Dropbox/control/"
+        #self.images_root_path = "C:/Users/lab_user/Dropbox/control/"
+        self.images_root_path = "C:/Users/lab_user/The University of Nottingham/Physics Observatory - General/"
         # special objects:
         self.tel = None
         self.bias = None
