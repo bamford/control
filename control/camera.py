@@ -57,7 +57,7 @@ class TakeImageThread(threading.Thread):
         self.stopevent = stopevent
         self.onevent = onevent
         self.continuous = False
-        self.camera_id = "ASCOM.SXMain0.Camera"
+        self.camera_id = "ASCOM.sxCamera.Imaging1.Camera"
         self.imshape = (2024, 3040)
         self.ImageReadyEvent = ImageReadyEventMain
         self.check_period = 1.0

@@ -1,3 +1,4 @@
+
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
@@ -101,7 +102,7 @@ class ControlPanel(wx.Panel):
         self.maxdark = 22500
         self.flat_offset = (10.0, 10.0)
         self.readout_time = 3.0
-        self.images_root_path = "C:/Users/lab_user/Dropbox/control/"
+        self.images_root_path = "C:/Users/Labuser/The University of Nottingham/Physics Observatory - control/"
         # special objects:
         self.tel = None
         self.bias = None
@@ -118,7 +119,7 @@ class ControlPanel(wx.Panel):
         # initialisations
         self.InitPaths()
         self.InitPanel()
-        wx.Yield()
+        wx.GetApp().Yield()
         wx.CallAfter(self.InitSAMP)
         wx.CallAfter(self.InitDS9)
         wx.CallAfter(self.InitTelescope)
@@ -328,7 +329,7 @@ class ControlPanel(wx.Panel):
             'Take science images of specified exposure time and number'))
         box.Add(ScienceButton, flag=wx.EXPAND|wx.ALL, border=10)
 
-        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
+        box.Add(wx.StaticLine(panel), flag=wx.EXPAND|wx.ALL, border=10)
 
         ContinuousButton = wx.Button(panel, label='Continuous images')
         ContinuousButton.Bind(wx.EVT_BUTTON, self.TakeContinuous)
@@ -337,7 +338,7 @@ class ControlPanel(wx.Panel):
             'Take continuous images of specified exposure time'))
         box.Add(ContinuousButton, flag=wx.EXPAND|wx.ALL, border=10)
 
-        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL, border=10)
+        box.Add(wx.StaticLine(panel), flag=wx.EXPAND|wx.ALL, border=10)
 
         subBox = wx.BoxSizer(wx.HORIZONTAL)
         subBox.Add(wx.StaticText(panel, label='Exp.Time'),
@@ -386,7 +387,7 @@ class ControlPanel(wx.Panel):
             subBox.Add(self.WindowCtrl)
             box.Add(subBox, flag=wx.EXPAND|wx.ALL, border=10)
 
-        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+        box.Add(wx.StaticLine(panel), flag=wx.EXPAND|wx.ALL,
                 border=10)
 
         self.AbortButton = wx.Button(panel, label='Abort')
@@ -394,10 +395,10 @@ class ControlPanel(wx.Panel):
         self.AbortButton.SetToolTip(wx.ToolTip(
             'Abort the current operation as soon as possible'))
         self.AbortButton.Disable()
-        box.Add(self.AbortButton, flag=wx.wx.EXPAND|wx.ALL,
+        box.Add(self.AbortButton, flag=wx.EXPAND|wx.ALL,
                 border=10)
 
-        box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+        box.Add(wx.StaticLine(panel), flag=wx.EXPAND|wx.ALL,
                 border=10)
 
         if enable_guider:
@@ -405,7 +406,7 @@ class ControlPanel(wx.Panel):
             self.GuiderButton.Bind(wx.EVT_BUTTON, self.ToggleGuider)
             self.GuiderButton.SetToolTip(wx.ToolTip('Toggle guider window'))
             box.Add(self.GuiderButton, flag=wx.EXPAND|wx.ALL, border=10)
-            box.Add(wx.StaticLine(panel), flag=wx.wx.EXPAND|wx.ALL,
+            box.Add(wx.StaticLine(panel), flag=wx.EXPAND|wx.ALL,
                     border=10)
 
         self.ResetDS9Button = wx.Button(panel, label='Reset DS9')
@@ -452,7 +453,7 @@ class ControlPanel(wx.Panel):
             'Sync telescope position to astrometry and '
             'offset to original target position'))
         self.SyncButton.Disable()
-        subBox.Add(self.SyncButton, flag=wx.wx.EXPAND|wx.ALL,
+        subBox.Add(self.SyncButton, flag=wx.EXPAND|wx.ALL,
                    border=0)
         box.Add(subBox, 0)
         box.Add((-1, 10))
@@ -479,7 +480,7 @@ class ControlPanel(wx.Panel):
             'Slew telescope to given target position'))
         self.SlewButton.Enable()
         self.WorkButtons.append(self.SlewButton)
-        subBox.Add(self.SlewButton, flag=wx.wx.EXPAND|wx.ALL,
+        subBox.Add(self.SlewButton, flag=wx.EXPAND|wx.ALL,
                    border=0)
         box.Add(subBox, 0)
 
@@ -622,7 +623,7 @@ class ControlPanel(wx.Panel):
 
     def CheckForAbort(self):
         self.logger.Refresh()
-        #wx.Yield()
+        #wx.GetApp().Yield()
         if self.need_abort:
             raise ControlAbortError()
 
@@ -803,7 +804,7 @@ class ControlPanel(wx.Panel):
                         self.SaveImage('flat')
                         self.Log('Taken flat {:d}'.format(i+1))
                         self.CheckForAbort()
-                        self.OffsetTelescope(self.flat_offset)
+                        #self.OffsetTelescope(self.flat_offset)
                         self.CheckForAbort()
                         if i==0:
                             flat_stack = np.zeros((nflat,)+self.image.shape,
@@ -908,7 +909,7 @@ class ControlPanel(wx.Panel):
             delay = delaytime
             while delay > 0:
                 self.CheckForAbort()
-                wx.Yield()
+                wx.GetApp().Yield()
                 time.sleep(0.1)
                 delay -= 0.1
 
@@ -1114,8 +1115,8 @@ class ControlPanel(wx.Panel):
     def OffsetTelescope(self, offset_arcsec):
         dra, ddec = offset_arcsec
         if self.tel is not None:
-            self.tel.GuideRateRightAscension = 0.1
-            self.tel.GuideRateDeclination = 0.1
+            self.tel.GuideRateRightAscension = 1
+            self.tel.GuideRateDeclination = 1
             direction = 2 if dra > 0 else 3
             offset_time = abs(dra / self.tel.GuideRateRightAscension / 3.6)
             self.Log('Pulse guiding: direction {}, time {}'.format(direction, offset_time))
@@ -1348,7 +1349,7 @@ class ControlPanel(wx.Panel):
             self.GuiderButton.SetLabel('Hide Guider')
 
     def DS9Command(self, cmd, url=None, params=None):
-        wx.Yield()
+        wx.GetApp().Yield()
         if params is None:
             params = {'cmd': cmd}
         else:
