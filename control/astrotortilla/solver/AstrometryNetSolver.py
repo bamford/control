@@ -25,7 +25,7 @@ PROPERTYLIST = {
         "scale_units":(_("Scale units"), str, _("View scale size units"), _("arcminwidth, degwidth, arcsecperpix"), "degwidth"),
         "scale_xrefine":(_("Scale refinement"), float, _("Image scale refinement factor"), _("0 to turn off"), 0),
         "xtra":(_("Custom options"), str, _("Additional custom options"), "", "--sigma 1 --no-plots -N none --overwrite"),
-        "shell":(_("Cygwin shell"), str, _("Shell command for Cygwin execution"), "", 'C:\\cygwin\\bin\\bash --login -c "%s"'),
+        "shell":(_("Cygwin shell"), str, _("Shell command for Cygwin execution"), "", 'C:\\cygwin64\\bin\\bash --login -c "%s"'),
         "shell_hide":(_("Hide Cygwin"), bool, _("Hide Cygwin window while solving"), "True, False", True),
         "year_epoch":(_("JNow or J2000"), str, _("JNOW or J2000"), "", "JNOW"),
         }
