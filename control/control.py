@@ -17,7 +17,7 @@ from scipy.ndimage.interpolation import shift
 import astropy.coordinates as coord
 import astropy.units as u
 import astropy.io.fits as pyfits
-from astropy.vo.samp import SAMPIntegratedClient
+from astropy.samp import SAMPIntegratedClient
 import urlparse
 import sys
 import traceback
@@ -27,7 +27,8 @@ from RGBImage import RGBImage
 
 # simulate obtaining images for testing
 simulate = False
-debug = True
+test_image = False
+debug = False
 enable_guider = False
 enable_windowing = False
 
@@ -198,9 +199,11 @@ class ControlPanel(wx.Panel):
             self.DS9Command('frame delete all')
             self.DS9Command('tile')
             self.DS9Command('frame new')
-            #self.DS9Command('zoom 0.125')
+            self.DS9SelectFrame(1)
+            self.DS9Command('zoom to 0.25')
             self.DS9Command('frame new rgb')
-            #self.DS9Command('zoom 0.25')
+            self.DS9SelectFrame(2)
+            self.DS9Command('zoom to 0.5')
             self.DS9Command('rgb close')
         else:
             self.Log('No connection to DS9')
@@ -217,8 +220,7 @@ class ControlPanel(wx.Panel):
         self.wcs = None
         self.solver = Queue()
         self.SolverThread = SolverThread(self, self.solver,
-                                directory=os.path.join(self.images_root_path,
-                                                       'solve'))
+                                directory='C:/Users/Labuser/solve')
 
     def StopSolver(self):
         self.solver.set(None)
@@ -882,11 +884,13 @@ class ControlPanel(wx.Panel):
                     yield
                     self.CheckForAbort()
                     self.Log('Taken exposure {:d}'.format(i+1))
-                    # TESTING!!!
-                    #fullfilename = os.path.join(self.images_root_path, 'solve',
-                    #                            'test.fits')
-                    #self.image = pyfits.getdata(fullfilename)
+                    if test_image:
+                        self.Log('Using test image')
+                        fullfilename = os.path.join('C:/Users/Labuser/solve',
+                                                    'test.fits')
+                        self.image = pyfits.getdata(fullfilename)
                     self.SaveImage('sci')
+                    self.Log('Reducing images')
                     self.Reduce(exptime)
                     try:
                         wx.Yield()
@@ -970,6 +974,7 @@ class ControlPanel(wx.Panel):
                 #                            'test.fits')
                 #self.image = pyfits.getdata(fullfilename)
                 self.SaveImage('acq')
+                self.Log('Reducing images')
                 self.Reduce(exptime)
                 self.SaveRGBImages('acq')
                 self.GetAstrometry()
@@ -1243,13 +1248,13 @@ class ControlPanel(wx.Panel):
             self.filename = filename
             fullfilename = os.path.join(self.images_path, filename)
             pyfits.writeto(fullfilename, self.image, header,
-                           clobber=clobber)
+                           overwrite=clobber)
             self.Log('Saved {}'.format(filename))
         elif filtersum:
             filename = name+'.fits'
             fullfilename = os.path.join(self.images_path, filename)
             pyfits.writeto(fullfilename, np.sum(self.filters, 0), header,
-                           clobber=clobber)
+                           overwrite=clobber)
         else:
             self.filters_filename = {}
             for i, f in enumerate('rgb'):
@@ -1257,7 +1262,7 @@ class ControlPanel(wx.Panel):
                 self.filters_filename[f] = filename
                 fullfilename = os.path.join(self.images_path, filename)
                 pyfits.writeto(fullfilename, self.filters[i], header,
-                               clobber=clobber)
+                               overwrite=clobber)
                 self.Log('Saved {}'.format(filename))
             #self.rgb_filename = name+'_rgb.fits'
             #fullfilename = os.path.join(self.images_path, self.rgb_filename)
@@ -1303,7 +1308,7 @@ class ControlPanel(wx.Panel):
 
     def GetAstrometry(self):
         self.Log('Attempting to determine astrometry')
-        path = os.path.join(self.images_root_path, 'solve')
+        path = 'C:/Users/Labuser/solve'
         if not os.path.exists(path):
             os.makedirs(path)
         solvefilename = os.path.join(path, 'solve.fits')
@@ -1321,8 +1326,7 @@ class ControlPanel(wx.Panel):
                                dec=event.solution.center.dec,
                                unit=(u.degree, u.degree), frame='icrs')
             self.ast_position = c
-            wcs = pyfits.getheader(os.path.join(self.images_root_path,
-                                                     'solve', 'solve.wcs'))
+            wcs = pyfits.getheader(os.path.join('C:/Users/Labuser/solve', 'solve.wcs'))
             if self.last_telescope_move <= event.image_time:
                 self.wcs = wcs
             else:
@@ -1375,6 +1379,7 @@ class ControlPanel(wx.Panel):
                 self.samp_client.notify_all(message)
             except:
                 self.samp_client = None
+        time.sleep(0.1)
 
     def DS9SelectFrame(self, frame):
         self.DS9Command('frame {}'.format(frame))

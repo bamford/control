@@ -170,7 +170,7 @@ class AstrometryNetSolver(IPlateSolver):
             else:
                 t_radius = float(self.getProperty("searchradius"))
             options.append("-3 %f -4 %f -5 %f"%(target.RA, target.dec, t_radius))
-        options.append("-b %s"%(self.getProperty("configfile").replace("\\", "/")))
+        #options.append("-b %s"%(self.getProperty("configfile").replace("\\", "/")))
         options.append("%s"%(self.getProperty("xtra")))
         options.append("-L %s"%(minFov or self.getProperty("scale_low")))
         options.append("-H %s"%(maxFov or self.getProperty("scale_max")))
@@ -182,8 +182,8 @@ class AstrometryNetSolver(IPlateSolver):
                 options.append("-z %d"%int(self.getProperty("downscale")))
         except:
             pass
-
-        r=self.__execute('solve-field %s -D \\"`cygpath -a \\"%s\\"`\\" \\"`cygpath -a \\"%s\\"`\\"'%(" ".join(options), workDir, imagePath))
+        cmd = 'solve-field %s -D `cygpath -a \"%s\"` `cygpath -a \"%s\"`'%(" ".join(options), workDir, imagePath)
+        r=self.__execute(cmd)
 
         if self.__shell != None:
             pid = self.__shell.pid

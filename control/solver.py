@@ -44,7 +44,7 @@ class SolverThread(threading.Thread):
         xtra = '--depth 20 --no-plots -N none --overwrite'
         self.solver.setProperty('xtra', xtra +
                                 ' --keep-xylist %s.xy')
-        self.solver.setProperty('scale_low', 1.1)
+        self.solver.setProperty('scale_low', 0.9)
         self.solver.setProperty('scale_max', 1.3)
         self.solver.setProperty('scale_units', 'arcsecperpix')
         self.solver.setProperty('searchradius', 5.0)
@@ -61,9 +61,10 @@ class SolverThread(threading.Thread):
                     target = None
                 solution = self.solver.solve(fn, target=target)
                                              #callback=self.Log)
+                print('solution:', solution)
                 if solution is None:
                     self.solver.setProperty('xtra', xtra +
-                                            ' --no-fits2fits --continue')
+                                            ' --continue')
                     solution = self.solver.solve(fn.replace('.fits', '.xy'))
                                                  #callback=self.Log)
                 wx.PostEvent(self.parent,
